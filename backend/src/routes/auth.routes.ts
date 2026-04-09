@@ -1,0 +1,20 @@
+import { Hono } from "hono";
+import {
+  changePassword,
+  forgotPassword,
+  login,
+  logout,
+  resetPassword,
+  signup,
+  verifySignupOtp,
+} from "../controllers/auth.controller.js";
+
+export const authRoutes = new Hono();
+
+authRoutes.post("/signup", signup);
+authRoutes.post("/verify-otp", verifySignupOtp);
+authRoutes.post("/login", login);
+authRoutes.post("/change-password", changePassword);
+authRoutes.post("/forgot-password", forgotPassword);
+authRoutes.post("/reset-password", resetPassword);
+authRoutes.post("/logout", logout);
