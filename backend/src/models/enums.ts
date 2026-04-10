@@ -71,3 +71,9 @@ export const otpPurposeEnum = pgEnum("otp_purpose", [
   "signup_verification",
   "reset_password",
 ]);
+
+export const cartStatusEnum = pgEnum("cart_status", [
+  "active",
+  "checked_out",
+  "abandoned",
+]);

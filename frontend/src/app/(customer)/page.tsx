@@ -1,8 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,20 +13,43 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 
 export default function CustomerHomePage() {
-  const router = useRouter();
   const { user, isReady } = useAuth();
 
-  useEffect(() => {
-    if (isReady && !user) {
-      router.replace("/login");
-    }
-  }, [isReady, user, router]);
-
-  if (!isReady || !user) {
+  if (!isReady) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Spinner className="size-8 text-muted-foreground" />
       </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="container flex max-w-lg flex-col gap-8 py-16">
+        <div className="space-y-2 text-center">
+          <h1 className="text-3xl font-semibold tracking-tight">Flash Go</h1>
+          <p className="text-muted-foreground">
+            Fast delivery for food, packages, and more. Browse as a guest, or sign in to order and
+            track deliveries.
+          </p>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Get started</CardTitle>
+            <CardDescription>
+              Create an account or sign in to place orders and manage your profile.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Button asChild className="w-full sm:w-auto">
+              <Link href="/signup">Sign up</Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full sm:w-auto">
+              <Link href="/login">Log in</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </main>
     );
   }
 
