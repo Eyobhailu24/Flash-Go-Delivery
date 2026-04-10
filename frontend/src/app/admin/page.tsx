@@ -37,7 +37,7 @@ export default function AdminOverviewPage() {
   }, [users]);
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+    <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
         <p className="text-sm text-muted-foreground">
@@ -52,66 +52,66 @@ export default function AdminOverviewPage() {
         </Alert>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
+      <div className="flex min-w-0 w-full flex-row flex-nowrap gap-3 sm:gap-4">
+        <Card className="min-w-0 flex-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Users loaded</CardTitle>
-            <UsersIcon className="size-4 text-muted-foreground" />
+            <CardTitle className="text-xs font-medium sm:text-sm">Users loaded</CardTitle>
+            <UsersIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pt-0 sm:px-6">
             {loading ? (
               <Skeleton className="h-8 w-16" />
             ) : (
-              <p className="text-2xl font-bold">{stats.loaded}</p>
+              <p className="text-xl font-bold sm:text-2xl">{stats.loaded}</p>
             )}
-            <CardDescription className="mt-1">
+            <CardDescription className="mt-1 text-xs leading-snug">
               Rows in this response (not necessarily total in DB).
             </CardDescription>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0 flex-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Customers</CardTitle>
-            <UsersIcon className="size-4 text-muted-foreground" />
+            <CardTitle className="text-xs font-medium sm:text-sm">Customers</CardTitle>
+            <UsersIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pt-0 sm:px-6">
             {loading ? (
               <Skeleton className="h-8 w-12" />
             ) : (
-              <p className="text-2xl font-bold">{stats.customers}</p>
+              <p className="text-xl font-bold sm:text-2xl">{stats.customers}</p>
             )}
-            <CardDescription className="mt-1">In loaded set</CardDescription>
+            <CardDescription className="mt-1 text-xs">In loaded set</CardDescription>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0 flex-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Drivers</CardTitle>
-            <TruckIcon className="size-4 text-muted-foreground" />
+            <CardTitle className="text-xs font-medium sm:text-sm">Drivers</CardTitle>
+            <TruckIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pt-0 sm:px-6">
             {loading ? (
               <Skeleton className="h-8 w-12" />
             ) : (
-              <p className="text-2xl font-bold">{stats.drivers}</p>
+              <p className="text-xl font-bold sm:text-2xl">{stats.drivers}</p>
             )}
-            <CardDescription className="mt-1">In loaded set</CardDescription>
+            <CardDescription className="mt-1 text-xs">In loaded set</CardDescription>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0 flex-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Businesses</CardTitle>
-            <Building2Icon className="size-4 text-muted-foreground" />
+            <CardTitle className="text-xs font-medium sm:text-sm">Businesses</CardTitle>
+            <Building2Icon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pt-0 sm:px-6">
             {loading ? (
               <Skeleton className="h-8 w-12" />
             ) : (
-              <p className="text-2xl font-bold">{stats.businesses}</p>
+              <p className="text-xl font-bold sm:text-2xl">{stats.businesses}</p>
             )}
-            <CardDescription className="mt-1">In loaded set</CardDescription>
+            <CardDescription className="mt-1 text-xs">In loaded set</CardDescription>
           </CardContent>
         </Card>
       </div>
