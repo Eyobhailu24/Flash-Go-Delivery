@@ -1,5 +1,7 @@
 "use client";
 
+/** Reference implementation for admin feature hooks; general rules live in `frontend/AGENTS.md`. */
+
 import { useCallback, useEffect, useState } from "react";
 import {
   authFetch,
