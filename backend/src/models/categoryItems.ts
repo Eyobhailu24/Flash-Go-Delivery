@@ -9,24 +9,21 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { productCategories } from "./productCategories.js";
-import { users } from "./users.js";
 
-export const products = pgTable(
-  "products",
+export const categoryItems = pgTable(
+  "category_items",
   {
-    productId: uuid("product_id").defaultRandom().primaryKey(),
-    businessId: uuid("business_id")
+    id: uuid("id").defaultRandom().primaryKey(),
+    categoryId: uuid("category_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    categoryId: uuid("category_id").references(() => productCategories.id, {
-      onDelete: "set null",
-    }),
+      .references(() => productCategories.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
     imageUrl: text("image_url"),
     price: numeric("price", { precision: 12, scale: 2 }).notNull(),
-    sortOrder: integer("sort_order").notNull().default(0),
+    discount: numeric("discount", { precision: 12, scale: 2 }),
     isAvailable: boolean("is_available").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -36,8 +33,9 @@ export const products = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index("products_business_available_idx").on(table.businessId, table.isAvailable),
-    index("products_business_category_idx").on(table.businessId, table.categoryId),
-    index("products_category_idx").on(table.categoryId),
+    index("category_items_category_sort_idx").on(
+      table.categoryId,
+      table.sortOrder
+    ),
   ]
 );

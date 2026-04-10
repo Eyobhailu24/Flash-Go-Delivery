@@ -1,4 +1,10 @@
-import { integer, jsonb, pgTable, uuid } from "drizzle-orm/pg-core";
+import {
+  integer,
+  jsonb,
+  pgTable,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { users } from "./users.js";
 
 export const customerProfile = pgTable("customer_profile", {
@@ -16,4 +22,7 @@ export const customerProfile = pgTable("customer_profile", {
   >(),
   preferences: jsonb("preferences").$type<Record<string, unknown>>(),
   loyaltyPoints: integer("loyalty_points").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });

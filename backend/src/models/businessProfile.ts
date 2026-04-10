@@ -11,4 +11,7 @@ export const businessProfile = pgTable("business_profile", {
   address: text("address"),
   status: businessStatusEnum("status").notNull().default("pending"),
   approvedDate: timestamp("approved_date", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });

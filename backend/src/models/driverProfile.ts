@@ -19,4 +19,7 @@ export const driverProfile = pgTable("driver_profile", {
   joiningDate: timestamp("joining_date", { withTimezone: true })
     .defaultNow()
     .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });

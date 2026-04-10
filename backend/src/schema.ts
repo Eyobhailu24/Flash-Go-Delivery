@@ -10,7 +10,7 @@ export * from "./models/payments.js";
 export * from "./models/applications.js";
 export * from "./models/packages.js";
 export * from "./models/productCategories.js";
-export * from "./models/products.js";
+export * from "./models/categoryItems.js";
 export * from "./models/carts.js";
 export * from "./models/cartItems.js";
 export * from "./models/driverLocations.js";

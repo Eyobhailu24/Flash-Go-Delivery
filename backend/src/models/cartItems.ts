@@ -1,6 +1,6 @@
 import { index, integer, numeric, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { carts } from "./carts.js";
-import { products } from "./products.js";
+import { categoryItems } from "./categoryItems.js";
 
 export const cartItems = pgTable(
   "cart_items",
@@ -9,9 +9,9 @@ export const cartItems = pgTable(
     cartId: uuid("cart_id")
       .notNull()
       .references(() => carts.id, { onDelete: "cascade" }),
-    productId: uuid("product_id")
+    categoryItemId: uuid("category_item_id")
       .notNull()
-      .references(() => products.productId, { onDelete: "cascade" }),
+      .references(() => categoryItems.id, { onDelete: "cascade" }),
     quantity: integer("quantity").notNull(),
     unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
     specialInstructions: text("special_instructions"),
