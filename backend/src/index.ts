@@ -7,7 +7,17 @@ import { users } from "./schema.js";
 import { authRoutes } from "./routes/auth.routes.js";
 
 const app = new Hono();
-app.use("*", cors());
+
+const frontendOrigin = process.env.FRONTEND_ORIGIN ?? "http://localhost:3000";
+app.use(
+  "*",
+  cors({
+    origin: frontendOrigin,
+    credentials: true,
+    allowHeaders: ["Content-Type", "Authorization"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  })
+);
 
 app.get("/", (c) => c.json({ message: "FlashGo backend is running" }));
 app.route("/auth", authRoutes);

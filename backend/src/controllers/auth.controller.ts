@@ -10,6 +10,7 @@ import { otpVerifications, users } from "../schema.js";
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2),
+  email: z.string().trim().email(),
   phoneNumber: z.string().trim().min(8),
   password: z.string().min(Number(process.env.PASSWORD_MIN_LENGTH ?? 8)),
 });
@@ -64,6 +65,10 @@ const otpTemplate =
 
 function normalizePhone(phoneNumber: string): string {
   return phoneNumber.replace(/\s+/g, "");
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 function parseDurationToSeconds(duration: string): number {
@@ -254,6 +259,7 @@ export const signup = async (c: Context) => {
   }
 
   const fullName = parsed.data.fullName.trim();
+  const email = normalizeEmail(parsed.data.email);
   const phoneNumber = normalizePhone(parsed.data.phoneNumber);
   const passwordHash = await argon2.hash(parsed.data.password);
 
@@ -270,19 +276,31 @@ export const signup = async (c: Context) => {
     return c.json({ message: "Phone number is already registered." }, 409);
   }
 
+  const emailOwner = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  const emailTakenByOther =
+    emailOwner[0] && (!existing[0] || emailOwner[0].id !== existing[0].id);
+  if (emailTakenByOther) {
+    return c.json({ message: "Email is already registered." }, 409);
+  }
+
   if (!existing[0]) {
     await db.insert(users).values({
       fullName,
+      email,
       phoneNumber,
       passwordHash,
       role: "customer",
-      email: `${phoneNumber}@phone.flashgo.local`,
       isVerified: false,
     });
   } else {
     await db
       .update(users)
-      .set({ fullName, passwordHash, role: "customer" })
+      .set({ fullName, email, passwordHash, role: "customer" })
       .where(eq(users.id, existing[0].id));
   }
 
@@ -359,6 +377,7 @@ export const login = async (c: Context) => {
     user: {
       id: user.id,
       fullName: user.fullName,
+      email: user.email,
       role: user.role,
       phoneNumber: user.phoneNumber,
     },
@@ -441,4 +460,38 @@ export const logout = async (c: Context) => {
   deleteCookie(c, "access_token", { path: "/", domain: cookieDomain });
   deleteCookie(c, "refresh_token", { path: "/", domain: cookieDomain });
   return c.json({ message: "Logged out successfully." });
+};
+
+export const me = async (c: Context) => {
+  const auth = requireAuth(c);
+  if (!auth) {
+    return c.json({ message: "Unauthorized." }, 401);
+  }
+
+  const result = await db
+    .select({
+      id: users.id,
+      fullName: users.fullName,
+      email: users.email,
+      role: users.role,
+      phoneNumber: users.phoneNumber,
+    })
+    .from(users)
+    .where(eq(users.id, auth.sub))
+    .limit(1);
+
+  const user = result[0];
+  if (!user) {
+    return c.json({ message: "User not found." }, 404);
+  }
+
+  return c.json({
+    user: {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      phoneNumber: user.phoneNumber,
+    },
+  });
 };

@@ -4,6 +4,7 @@ import {
   forgotPassword,
   login,
   logout,
+  me,
   resetPassword,
   signup,
   verifySignupOtp,
@@ -11,6 +12,7 @@ import {
 
 export const authRoutes = new Hono();
 
+authRoutes.get("/me", me);
 authRoutes.post("/signup", signup);
 authRoutes.post("/verify-otp", verifySignupOtp);
 authRoutes.post("/login", login);
