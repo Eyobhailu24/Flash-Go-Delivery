@@ -19,7 +19,7 @@ export const categoryItems = pgTable(
       .references(() => productCategories.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
-    imageUrl: text("image_url"),
+    imagePath: text("image_path"),
     price: numeric("price", { precision: 12, scale: 2 }).notNull(),
     discount: numeric("discount", { precision: 12, scale: 2 }),
     isAvailable: boolean("is_available").notNull().default(true),

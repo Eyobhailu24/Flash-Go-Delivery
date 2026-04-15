@@ -16,7 +16,11 @@ export class AuthApiError extends Error {
 export async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const url = `${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
   const headers = new Headers(init.headers);
-  if (init.body != null && !headers.has("Content-Type")) {
+  if (
+    init.body != null &&
+    !headers.has("Content-Type") &&
+    !(typeof FormData !== "undefined" && init.body instanceof FormData)
+  ) {
     headers.set("Content-Type", "application/json");
   }
   return fetch(url, {

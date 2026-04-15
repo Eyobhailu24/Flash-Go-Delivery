@@ -14,9 +14,7 @@ const createCategorySchema = z.object({
   businessId: z.string().uuid().optional(),
   name: z.string().trim().min(1),
   imageUrl: z.string().trim().min(1).optional(),
-  description: z.string().trim().optional(),
   sortOrder: z.number().int().optional(),
-  isActive: z.boolean().optional(),
 });
 
 const updateCategorySchema = z
@@ -28,14 +26,7 @@ const updateCategorySchema = z
         z.literal('').transform(() => null),
       ])
       .optional(),
-    description: z
-      .union([
-        z.string().trim(),
-        z.literal('').transform(() => null),
-      ])
-      .optional(),
     sortOrder: z.number().int().optional(),
-    isActive: z.boolean().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: 'At least one field is required.',
@@ -48,7 +39,9 @@ const idParamSchema = z.object({
 export const createProductCategory = async (
   c: Context<CatalogEnv>,
 ) => {
-  const parsed = createCategorySchema.safeParse(await c.req.json());
+  const parsed = createCategorySchema.safeParse(
+    await c.req.json(),
+  );
   if (!parsed.success) {
     return c.json(
       { message: 'Invalid request payload.' },
@@ -68,9 +61,7 @@ export const createProductCategory = async (
       businessId: scope.businessId,
       name: parsed.data.name.trim(),
       imageUrl: parsed.data.imageUrl ?? undefined,
-      description: parsed.data.description ?? undefined,
       sortOrder: parsed.data.sortOrder ?? 0,
-      isActive: parsed.data.isActive ?? true,
     })
     .returning();
 
@@ -85,7 +76,9 @@ export const updateProductCategory = async (
     return c.json({ message: 'Invalid category id.' }, 400);
   }
 
-  const parsed = updateCategorySchema.safeParse(await c.req.json());
+  const parsed = updateCategorySchema.safeParse(
+    await c.req.json(),
+  );
   if (!parsed.success) {
     return c.json(
       { message: 'Invalid request payload.' },
@@ -109,21 +102,17 @@ export const updateProductCategory = async (
     return c.json({ message: 'Category not found.' }, 404);
   }
 
-  const patch: Partial<typeof productCategories.$inferInsert> = {};
+  const patch: Partial<
+    typeof productCategories.$inferInsert
+  > = {};
   if (parsed.data.name !== undefined) {
     patch.name = parsed.data.name.trim();
   }
   if (parsed.data.imageUrl !== undefined) {
     patch.imageUrl = parsed.data.imageUrl;
   }
-  if (parsed.data.description !== undefined) {
-    patch.description = parsed.data.description;
-  }
   if (parsed.data.sortOrder !== undefined) {
     patch.sortOrder = parsed.data.sortOrder;
-  }
-  if (parsed.data.isActive !== undefined) {
-    patch.isActive = parsed.data.isActive;
   }
 
   const [updated] = await db
@@ -172,7 +161,10 @@ export const deleteProductCategory = async (
     return c.json({ message: 'Category not found.' }, 404);
   }
 
-  return c.json({ message: 'Category deleted.', id: removed.id });
+  return c.json({
+    message: 'Category deleted.',
+    id: removed.id,
+  });
 };
 
 export const getAllProductCategories = async (
@@ -195,7 +187,9 @@ export const getAllProductCategories = async (
   const rows = await db
     .select()
     .from(productCategories)
-    .where(eq(productCategories.businessId, scope.businessId))
+    .where(
+      eq(productCategories.businessId, scope.businessId),
+    )
     .orderBy(
       asc(productCategories.sortOrder),
       asc(productCategories.createdAt),

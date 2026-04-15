@@ -30,6 +30,7 @@ backend/coverage/
 backend/.turbo/
 backend/.cache/
 backend/*.tsbuildinfo
+backend/uploads/
 
 # Env files (keep examples if present)
 .env

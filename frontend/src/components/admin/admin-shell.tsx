@@ -1,13 +1,14 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboardIcon,
   LogOutIcon,
   PackageIcon,
+  TagsIcon,
   UsersIcon,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -23,23 +24,56 @@ import {
   SidebarRail,
   SidebarTrigger,
   useSidebar,
-} from "@/components/ui/sidebar";
-import { useAuth } from "@/contexts/auth-context";
+} from '@/components/ui/sidebar';
+import { useAuth } from '@/contexts/auth-context';
 
 const nav = [
-  { href: "/admin", label: "Overview", icon: LayoutDashboardIcon, exact: true },
-  { href: "/admin/users", label: "Users", icon: UsersIcon, exact: false },
-  { href: "/admin/products", label: "Products", icon: PackageIcon, exact: false },
+  {
+    href: '/admin',
+    label: 'Overview',
+    icon: LayoutDashboardIcon,
+    exact: true,
+  },
+  {
+    href: '/admin/users',
+    label: 'Users',
+    icon: UsersIcon,
+    exact: false,
+  },
+  {
+    href: '/admin/add-business',
+    label: 'Add Business',
+    icon: UsersIcon,
+    exact: false,
+  },
+  {
+    href: '/admin/products',
+    label: 'Products',
+    icon: PackageIcon,
+    exact: false,
+  },
+  {
+    href: '/admin/product-categories',
+    label: 'Product categories',
+    icon: TagsIcon,
+    exact: false,
+  },
 ];
 
-function isNavActive(pathname: string, href: string, exact: boolean) {
+function isNavActive(
+  pathname: string,
+  href: string,
+  exact: boolean,
+) {
   if (exact) return pathname === href;
-  return pathname === href || pathname.startsWith(`${href}/`);
+  return (
+    pathname === href || pathname.startsWith(`${href}/`)
+  );
 }
 
 function SidebarMenuToolbar() {
   const { state, isMobile } = useSidebar();
-  const collapsed = state === "collapsed";
+  const collapsed = state === 'collapsed';
 
   if (collapsed && !isMobile) {
     return (
@@ -65,7 +99,7 @@ function AdminSidebarFooter() {
 
   const handleLogout = async () => {
     await logout();
-    router.push("/login");
+    router.push('/login');
   };
 
   return (
@@ -86,8 +120,12 @@ function AdminSidebarFooter() {
   );
 }
 
-export function AdminShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname() ?? "";
+export function AdminShell({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname() ?? '';
 
   return (
     <SidebarProvider>
@@ -101,7 +139,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                     FG
                   </span>
                   <span className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">FlashGo</span>
+                    <span className="truncate font-semibold">
+                      FlashGo
+                    </span>
                     <span className="truncate text-xs text-muted-foreground">
                       Admin
                     </span>
@@ -116,20 +156,26 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <SidebarMenuToolbar />
             <SidebarGroupContent>
               <SidebarMenu>
-                {nav.map(({ href, label, icon: Icon, exact }) => (
-                  <SidebarMenuItem key={href}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isNavActive(pathname, href, exact)}
-                      tooltip={label}
-                    >
-                      <Link href={href}>
-                        <Icon />
-                        <span>{label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {nav.map(
+                  ({ href, label, icon: Icon, exact }) => (
+                    <SidebarMenuItem key={href}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isNavActive(
+                          pathname,
+                          href,
+                          exact,
+                        )}
+                        tooltip={label}
+                      >
+                        <Link href={href}>
+                          <Icon />
+                          <span>{label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ),
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -138,7 +184,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <SidebarRail />
       </Sidebar>
       <SidebarInset>
-        <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">{children}</div>
+        <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+          {children}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );
