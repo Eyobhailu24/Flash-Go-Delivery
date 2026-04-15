@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 import { useCarts } from "../_hooks/use-carts";
+import { useLiveAddress } from "../_hooks/use-live-address";
 import {
   catalogItemImageUrl,
   fetchCategoryItems,
@@ -60,8 +61,12 @@ export default function CustomerMenuPage() {
   );
 
   const firstName = user?.fullName?.split(" ")[0] ?? "Guest";
-  const userAddress =
-    (user as { address?: string } | null)?.address?.trim() || "Purwokerto Selatan";
+  const { liveAddress, loading: loadingLiveAddress } = useLiveAddress();
+  const profileAddress =
+    (user as { address?: string } | null)?.address?.trim() || "";
+  const userAddress = loadingLiveAddress
+    ? "Detecting location..."
+    : liveAddress || profileAddress || "Purwokerto Selatan";
 
   useEffect(() => {
     let cancelled = false;

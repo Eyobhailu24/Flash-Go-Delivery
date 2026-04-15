@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { CustomerTopNavbar } from "@/components/customer/customer-top-navbar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +15,11 @@ import { useAuth } from "@/contexts/auth-context";
 import { catalogItemImageUrl } from "@/lib/admin-catalog-api";
 import { formatBirr } from "@/lib/currency";
 import { useCarts } from "../_hooks/use-carts";
+import {
+  type CheckoutPaymentMethod,
+  useCheckout,
+} from "../_hooks/use-checkout";
+import { useLiveAddress } from "../_hooks/use-live-address";
 
 function CheckoutSkeleton() {
   return (
@@ -55,6 +61,9 @@ export default function CustomerCheckoutPage() {
     isUpdatingItem,
     loading: cartLoading,
   } = useCarts();
+  const { placeOrder, loading: checkoutLoading } = useCheckout();
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<CheckoutPaymentMethod>("cash");
 
   const todayLabel = useMemo(
     () =>
@@ -68,8 +77,12 @@ export default function CustomerCheckoutPage() {
   );
 
   const firstName = user?.fullName?.split(" ")[0] ?? "Guest";
-  const userAddress =
-    (user as { address?: string } | null)?.address?.trim() || "Purwokerto Selatan";
+  const { liveAddress, loading: loadingLiveAddress } = useLiveAddress();
+  const profileAddress =
+    (user as { address?: string } | null)?.address?.trim() || "";
+  const userAddress = loadingLiveAddress
+    ? "Detecting location..."
+    : liveAddress || profileAddress || "Purwokerto Selatan";
 
   useEffect(() => {
     void loadPrimaryActiveCart();
@@ -118,6 +131,37 @@ export default function CustomerCheckoutPage() {
     } catch (e) {
       toast.error(
         e instanceof Error ? e.message : "Could not remove item.",
+      );
+    }
+  };
+
+  const onPlaceOrder = async () => {
+    if (!activeCart) return;
+
+    try {
+      const result = await placeOrder({
+        cartId: activeCart.id,
+        paymentMethod: selectedPaymentMethod,
+      });
+
+      if (selectedPaymentMethod === "telebirr") {
+        if (!result.payment?.checkoutUrl) {
+          throw new Error("Telebirr checkout URL is missing.");
+        }
+        window.location.href = result.payment.checkoutUrl;
+        return;
+      }
+
+      toast.success("Order placed successfully.");
+      router.push(
+        `/payment-status?status=success&method=${selectedPaymentMethod}&order_id=${encodeURIComponent(
+          result.checkout.order.id,
+        )}`,
+      );
+      await loadPrimaryActiveCart();
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Could not place your order.",
       );
     }
   };
@@ -269,16 +313,66 @@ export default function CustomerCheckoutPage() {
                     {formatBirr(activeCartSummary?.subtotal ?? "0")}
                   </span>
                 </div>
+                <div className="mb-4 space-y-2">
+                  <p className="text-sm font-semibold text-gray-800">
+                    Payment method
+                  </p>
+                  <div className="grid gap-2">
+                    <button
+                      type="button"
+                      className={`rounded-xl border p-3 text-left transition-all ${
+                        selectedPaymentMethod === "cash"
+                          ? "border-orange-400 bg-orange-50 shadow-sm"
+                          : "border-orange-100 bg-white hover:border-orange-300"
+                      }`}
+                      onClick={() => setSelectedPaymentMethod("cash")}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-gray-800">
+                          Cash on Delivery
+                        </p>
+                        {selectedPaymentMethod === "cash" ? (
+                          <Badge className="bg-orange-500 text-white">
+                            Selected
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Pay in cash when your order arrives.
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded-xl border p-3 text-left transition-all ${
+                        selectedPaymentMethod === "telebirr"
+                          ? "border-orange-400 bg-orange-50 shadow-sm"
+                          : "border-orange-100 bg-white hover:border-orange-300"
+                      }`}
+                      onClick={() => setSelectedPaymentMethod("telebirr")}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-gray-800">
+                          Telebirr
+                        </p>
+                        {selectedPaymentMethod === "telebirr" ? (
+                          <Badge className="bg-orange-500 text-white">
+                            Selected
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Continue to secure Telebirr payment checkout.
+                      </p>
+                    </button>
+                  </div>
+                </div>
                 <Button
                   type="button"
                   className="h-11 w-full rounded-xl bg-orange-500 text-white hover:bg-orange-400"
-                  onClick={() =>
-                    toast.info(
-                      "Checkout submission will be connected next.",
-                    )
-                  }
+                  onClick={() => void onPlaceOrder()}
+                  disabled={checkoutLoading}
                 >
-                  Place order
+                  {checkoutLoading ? "Placing order..." : "Place order"}
                 </Button>
               </div>
             </CardContent>

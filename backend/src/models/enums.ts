@@ -31,6 +31,7 @@ export const orderStatusEnum = pgEnum("order_status", [
 
 export const paymentMethodEnum = pgEnum("payment_method", [
   "cash",
+  "telebirr",
   "card",
   "wallet",
   "transfer",

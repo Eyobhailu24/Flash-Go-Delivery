@@ -21,6 +21,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { CartItemView } from "@/app/(customer)/_hooks/use-carts";
 import { catalogItemImageUrl } from "@/lib/admin-catalog-api";
 import { formatBirr } from "@/lib/currency";
@@ -74,12 +79,19 @@ export function CustomerTopNavbar({
           variant="outline"
           className="hidden h-11 rounded-xl border-0 bg-orange-500 px-4 text-white shadow-sm transition-all hover:scale-[1.02] hover:bg-orange-400 md:inline-flex"
         >
-          <Link href="/orders">Track Order</Link>
+          <Link href="/track-order">Track Order</Link>
         </Button>
-        <div className="hidden h-11 items-center gap-1 rounded-full border-0 bg-orange-50 px-4 text-sm text-gray-500 shadow-sm md:flex">
-          <MapPin className="size-4" />
-          <span className="max-w-[200px] truncate">{userAddress}</span>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="hidden h-11 items-center gap-1 rounded-full border-0 bg-orange-50 px-4 text-sm text-gray-500 shadow-sm md:flex">
+              <MapPin className="size-4" />
+              <span className="max-w-[200px] truncate">{userAddress}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={8} className="max-w-sm">
+            <span className="wrap-break-word">{userAddress}</span>
+          </TooltipContent>
+        </Tooltip>
         <Popover open={isCartOpen} onOpenChange={setIsCartOpen}>
           <PopoverTrigger asChild>
             <Button

@@ -12,6 +12,8 @@ import { authRoutes } from './routes/auth.routes.js';
 import { profileRoutes } from './routes/profile.routes.js';
 import { userRoutes } from './routes/user.routes.js';
 import { cartRoutes } from './routes/cart.routes.js';
+import { orderRoutes } from './routes/order.routes.js';
+import { paymentRoutes } from './routes/payment.routes.js';
 
 const app = new Hono();
 
@@ -80,6 +82,8 @@ app.route('/users', userRoutes);
 app.route('/profiles', profileRoutes);
 app.route('/catalog', catalogRoutes);
 app.route('/carts', cartRoutes);
+app.route('/orders', orderRoutes);
+app.route('/payments', paymentRoutes);
 
 app.get('/health', async (c) => {
   const result = await db.select().from(users).limit(1);
