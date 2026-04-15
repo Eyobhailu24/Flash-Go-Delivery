@@ -1,7 +1,9 @@
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+
 <!-- END:nextjs-agent-rules -->
 
 ## Project stack (follow every time)
@@ -75,3 +77,54 @@ Use this flow when adding or extending APIs; mirror what already exists in `back
 - **Layout:** `src/app/admin/layout.tsx` wraps content with **`admin-dashboard`** class for the lighter orange theme (see **`src/app/globals.css`**).
 - **Pages:** Under **`src/app/admin/`** — use shadcn **Card**, **Table**, **Input**, **Select**, **ToggleGroup**, etc.; load data with the matching feature hook (e.g. **`useUsers()`**) or the standalone fetch helpers when a hook is not needed.
 - **Do not** add a duplicate global fetch client for the same API unless there is a strong reason; extend **`auth-api.ts`** or the feature hook instead.
+
+## UI Theme Guidelines (Customer-Facing App)
+
+- Use a **warm, modern food-app aesthetic** inspired by orange-centric palettes.
+- Primary color must be **orange**:
+  - `--primary: 24 95% 55%` (vibrant orange)
+- Use soft neutral backgrounds:
+  - `--background: 0 0% 98%` (light gray/white)
+  - `--card: 0 0% 100%`
+- Accent colors:
+  - Light orange shades for highlights and hover states
+  - Subtle shadows instead of borders where possible
+
+### Components (shadcn)
+
+- Buttons:
+  - Rounded (`rounded-xl`)
+  - Primary = orange background, white text
+  - Secondary = soft gray background
+
+- Cards:
+  - Use `shadow-md` + `rounded-2xl`
+  - Avoid harsh borders (`border-none` or very subtle)
+
+- Inputs / Search:
+  - Fully rounded (`rounded-full`)
+  - Light background with no strong borders
+
+- Navigation & Sections:
+  - Use spacing generously (`p-4`, `gap-4`)
+  - Keep layout airy and clean
+
+### Typography
+
+- Headings: bold, dark (`font-semibold`, `text-gray-900`)
+- Body: soft gray (`text-gray-500`)
+- Avoid pure black
+
+### UX Style
+
+- Use **icons + labels** (like category pills)
+- Prefer **cards and horizontal scroll sections**
+- Keep interactions soft:
+  - `hover:scale-[1.02]`
+  - `transition-all`
+
+### Overall Feel
+
+- Friendly, soft, modern
+- Inspired by food delivery apps
+- Avoid sharp edges, dark themes, or heavy contrast
