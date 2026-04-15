@@ -15,21 +15,39 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/auth-context";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { CartItemView } from "@/app/(customer)/_hooks/use-carts";
+import { catalogItemImageUrl } from "@/lib/admin-catalog-api";
+import { formatBirr } from "@/lib/currency";
 
 type CustomerTopNavbarProps = {
   firstName: string;
   todayLabel: string;
   userAddress: string;
+  cartItems?: CartItemView[];
+  cartTotalQuantity?: number;
+  cartSubtotal?: string;
+  cartLoading?: boolean;
 };
 
 export function CustomerTopNavbar({
   firstName,
   todayLabel,
   userAddress,
+  cartItems = [],
+  cartTotalQuantity = 0,
+  cartSubtotal = "0.00",
+  cartLoading = false,
 }: CustomerTopNavbarProps) {
   const router = useRouter();
   const { logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -62,18 +80,100 @@ export function CustomerTopNavbar({
           <MapPin className="size-4" />
           <span className="max-w-[200px] truncate">{userAddress}</span>
         </div>
+        <Popover open={isCartOpen} onOpenChange={setIsCartOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative rounded-full border-0 bg-white shadow-sm hover:bg-orange-50"
+              aria-label="Cart"
+              onMouseEnter={() => setIsCartOpen(true)}
+              onMouseLeave={() => setIsCartOpen(false)}
+              onClick={() => router.push("/checkout")}
+            >
+              <ShoppingCart className="size-5 text-gray-500" />
+              {cartTotalQuantity > 0 ? (
+                <Badge className="absolute -top-1 -right-1 min-w-5 rounded-full bg-orange-500 px-1.5 text-[10px] leading-5 text-white">
+                  {cartTotalQuantity}
+                </Badge>
+              ) : null}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="w-80 rounded-2xl border-none bg-white p-0 shadow-xl shadow-orange-100/70"
+            onMouseEnter={() => setIsCartOpen(true)}
+            onMouseLeave={() => setIsCartOpen(false)}
+          >
+            <div className="space-y-3 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-900">
+                  Your Cart
+                </p>
+                <p className="text-xs text-gray-500">
+                  {cartTotalQuantity} items
+                </p>
+              </div>
+              {cartLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-14 rounded-xl bg-orange-100/60" />
+                  <Skeleton className="h-14 rounded-xl bg-orange-100/60" />
+                </div>
+              ) : cartItems.length === 0 ? (
+                <div className="rounded-xl bg-orange-50 px-3 py-6 text-center text-sm text-gray-500">
+                  Your cart is empty. Add delicious items to get started.
+                </div>
+              ) : (
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {cartItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-2 rounded-xl bg-orange-50 p-2"
+                    >
+                      <div className="size-11 overflow-hidden rounded-lg bg-orange-100">
+                        {catalogItemImageUrl(item.itemImagePath) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={catalogItemImageUrl(item.itemImagePath) ?? ""}
+                            alt={item.itemName}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-gray-800">
+                          {item.itemName}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          x{item.quantity} · {formatBirr(item.unitPrice)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t border-orange-100 pt-2">
+                <p className="text-sm font-semibold text-gray-800">
+                  Subtotal
+                </p>
+                <p className="text-base font-bold text-orange-500">
+                  {formatBirr(cartSubtotal)}
+                </p>
+              </div>
+              <Button
+                type="button"
+                className="h-10 w-full rounded-xl bg-orange-500 text-white hover:bg-orange-400"
+                onClick={() => router.push("/checkout")}
+              >
+                Go to checkout
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
         <div className="hidden text-right md:block">
           <p className="text-sm font-semibold text-gray-900">Hello, {firstName}</p>
           <p className="text-xs text-gray-500">{todayLabel}</p>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative rounded-full border-0 bg-white shadow-sm hover:bg-orange-50"
-          aria-label="Cart"
-        >
-          <ShoppingCart className="size-5 text-gray-500" />
-        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="rounded-full transition hover:opacity-90">

@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapPin } from "lucide-react";
+import { toast } from "sonner";
 import { CustomerCategoriesSection } from "@/components/customer/customer-categories-section";
 import { CustomerHeroSection } from "@/components/customer/customer-hero-section";
 import { CustomerMenuSection } from "@/components/customer/customer-menu-section";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
+import { useCarts } from "./_hooks/use-carts";
 import {
   fetchCategoryItems,
   fetchPublicCategoryNames,
@@ -41,6 +42,14 @@ export default function CustomerHomePage() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [activeRestaurantIndex, setActiveRestaurantIndex] = useState(0);
   const restaurantScrollRef = useRef<HTMLDivElement | null>(null);
+  const {
+    addToCart,
+    isAddingItem,
+    cartItemsView,
+    activeCartSummary,
+    loadPrimaryActiveCart,
+    loading: cartLoading,
+  } = useCarts();
   const todayLabel = useMemo(
     () =>
       new Intl.DateTimeFormat("en-US", {
@@ -81,6 +90,10 @@ export default function CustomerHomePage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    void loadPrimaryActiveCart();
+  }, [loadPrimaryActiveCart]);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,12 +179,35 @@ export default function CustomerHomePage() {
   };
 
   const handleSelectCategory = (categoryId: string) => {
-    router.push(`/category?categoryId=${encodeURIComponent(categoryId)}`);
+    router.push(`/menu?categoryNameId=${encodeURIComponent(categoryId)}`);
+  };
+
+  const handleSelectNearbyRestaurant = (businessId: string) => {
+    router.push(`/menu?businessId=${encodeURIComponent(businessId)}`);
+  };
+
+  const handleAddToCart = async (item: CategoryItem) => {
+    try {
+      await addToCart(item, 1);
+      toast.success(`${item.name} added to cart.`);
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Could not add item to cart.",
+      );
+    }
   };
 
   return (
     <main className="customer-app flex min-h-screen w-full flex-col gap-6 bg-background px-4 pt-8 pb-6 md:px-6">
-      <CustomerTopNavbar firstName={firstName} todayLabel={todayLabel} userAddress={userAddress} />
+      <CustomerTopNavbar
+        firstName={firstName}
+        todayLabel={todayLabel}
+        userAddress={userAddress}
+        cartItems={cartItemsView}
+        cartTotalQuantity={activeCartSummary?.totalQuantity ?? 0}
+        cartSubtotal={activeCartSummary?.subtotal ?? "0.00"}
+        cartLoading={cartLoading}
+      />
 
       <CustomerHeroSection />
 
@@ -181,12 +217,21 @@ export default function CustomerHomePage() {
         onSelectCategory={handleSelectCategory}
       />
 
-      <CustomerMenuSection menuItems={menuItems} isLoading={isMenuLoading} />
+      <CustomerMenuSection
+        menuItems={menuItems}
+        isLoading={isMenuLoading}
+        onAddToCart={handleAddToCart}
+        isAddingItem={isAddingItem}
+      />
 
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-[32px] leading-none font-semibold text-gray-900">Nearby Restaurant</h2>
-          <Button variant="link" className="px-0 font-semibold text-orange-500 hover:text-orange-600">
+          <Button
+            variant="link"
+            className="px-0 font-semibold text-orange-500 hover:text-orange-600"
+            onClick={() => router.push("/menu")}
+          >
             View All
           </Button>
         </div>
@@ -200,7 +245,8 @@ export default function CustomerHomePage() {
               <Card
                 key={restaurant.id}
                 data-restaurant-card
-                className="group min-w-[260px] shrink-0 snap-start overflow-hidden rounded-2xl border-none bg-card shadow-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:shadow-xl hover:shadow-orange-100/70"
+                className="group min-w-[260px] shrink-0 snap-start cursor-pointer overflow-hidden rounded-2xl border-none bg-card shadow-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:shadow-xl hover:shadow-orange-100/70"
+                onClick={() => handleSelectNearbyRestaurant(restaurant.id)}
               >
                 <CardContent className="flex items-center gap-4 p-4">
                   <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-50 p-2 shadow-sm transition-transform duration-500 group-hover:scale-110 group-hover:bg-orange-100 group-hover:shadow-md">

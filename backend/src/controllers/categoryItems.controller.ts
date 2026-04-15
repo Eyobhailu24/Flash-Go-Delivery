@@ -10,7 +10,12 @@ import {
   saveCategoryItemImage,
   tryRemoveStoredImage,
 } from '../lib/categoryItemImageUpload.js';
-import { categoryItems, productCategories } from '../schema.js';
+import {
+  businessProfile,
+  categoryItems,
+  categoryNameCatalog,
+  productCategories,
+} from '../schema.js';
 
 function formatMoney(n: number): string {
   return n.toFixed(2);
@@ -457,8 +462,36 @@ export const getAllCategoryItems = async (
   const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
 
   const rows = await db
-    .select()
+    .select({
+      id: categoryItems.id,
+      categoryId: categoryItems.categoryId,
+      name: categoryItems.name,
+      description: categoryItems.description,
+      imagePath: categoryItems.imagePath,
+      price: categoryItems.price,
+      discount: categoryItems.discount,
+      isAvailable: categoryItems.isAvailable,
+      sortOrder: categoryItems.sortOrder,
+      createdAt: categoryItems.createdAt,
+      updatedAt: categoryItems.updatedAt,
+      categoryNameId: productCategories.categoryNameId,
+      categoryName: categoryNameCatalog.name,
+      businessId: productCategories.businessId,
+      businessName: businessProfile.businessName,
+    })
     .from(categoryItems)
+    .innerJoin(
+      productCategories,
+      eq(categoryItems.categoryId, productCategories.id),
+    )
+    .innerJoin(
+      categoryNameCatalog,
+      eq(productCategories.categoryNameId, categoryNameCatalog.id),
+    )
+    .innerJoin(
+      businessProfile,
+      eq(productCategories.businessId, businessProfile.userId),
+    )
     .where(
       categoryId
         ? eq(categoryItems.categoryId, categoryId)

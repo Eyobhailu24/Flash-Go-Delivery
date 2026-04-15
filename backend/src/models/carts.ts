@@ -36,8 +36,8 @@ export const carts = pgTable(
       table.businessId,
       table.status
     ),
-    uniqueIndex("carts_one_active_per_customer_business")
-      .on(table.customerId, table.businessId)
+    uniqueIndex("carts_one_active_per_customer")
+      .on(table.customerId)
       .where(sql`${table.status} = 'active'`),
   ]
 );

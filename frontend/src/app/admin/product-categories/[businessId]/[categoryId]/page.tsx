@@ -19,6 +19,12 @@ import {
   type CategoryItem,
   type ProductCategory,
 } from "@/lib/admin-catalog-api";
+import {
+  discountLabel,
+  formatBirr,
+  formatDiscountedBirr,
+  hasDiscount,
+} from "@/lib/currency";
 import { AuthApiError } from "@/lib/auth-api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -604,10 +610,12 @@ export default function AdminCategoryItemsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell font-medium">
-                        ${it.price}
+                        {formatBirr(it.price)}
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-muted-foreground">
-                        {it.discount != null ? `$${it.discount}` : "—"}
+                        {hasDiscount(it.discount)
+                          ? discountLabel(it.discount)
+                          : "—"}
                       </TableCell>
                       <TableCell>
                         <Badge variant={it.isAvailable ? "default" : "secondary"}>
@@ -642,6 +650,11 @@ export default function AdminCategoryItemsPage() {
                             No image
                           </div>
                         )}
+                        {hasDiscount(it.discount) ? (
+                          <Badge className="absolute top-2 right-2 border-0 bg-orange-500 text-[10px] font-semibold text-white shadow-sm">
+                            {discountLabel(it.discount)}
+                          </Badge>
+                        ) : null}
                       </div>
                       <CardHeader className="flex flex-row items-start gap-3 space-y-0 pb-2">
                         <Avatar className="size-10 shrink-0">
@@ -659,10 +672,26 @@ export default function AdminCategoryItemsPage() {
                         </div>
                       </CardHeader>
                       <CardContent className="flex flex-col gap-2 pt-0">
-                        <div className="flex flex-wrap gap-1.5">
-                          <Badge variant="outline">${it.price}</Badge>
-                          {it.discount != null ? (
-                            <Badge variant="secondary">${it.discount} off</Badge>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {hasDiscount(it.discount) ? (
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-xs font-medium text-muted-foreground line-through">
+                                {formatBirr(it.price)}
+                              </span>
+                              <Badge variant="outline">
+                                {formatDiscountedBirr(
+                                  it.price,
+                                  it.discount,
+                                )}
+                              </Badge>
+                            </div>
+                          ) : (
+                            <Badge variant="outline">{formatBirr(it.price)}</Badge>
+                          )}
+                          {hasDiscount(it.discount) ? (
+                            <Badge variant="secondary">
+                              {discountLabel(it.discount)}
+                            </Badge>
                           ) : null}
                           <Badge
                             variant={it.isAvailable ? "default" : "secondary"}

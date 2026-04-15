@@ -4,16 +4,30 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { ShoppingCart } from "lucide-react";
 import { catalogItemImageUrl, type CategoryItem } from "@/lib/admin-catalog-api";
+import {
+  discountLabel,
+  formatBirr,
+  formatDiscountedBirr,
+  hasDiscount,
+} from "@/lib/currency";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 
 type CustomerMenuSectionProps = {
   menuItems: CategoryItem[];
   isLoading: boolean;
+  onAddToCart?: (item: CategoryItem) => void | Promise<void>;
+  isAddingItem?: (itemId: string) => boolean;
 };
 
-export function CustomerMenuSection({ menuItems, isLoading }: CustomerMenuSectionProps) {
+export function CustomerMenuSection({
+  menuItems,
+  isLoading,
+  onAddToCart,
+  isAddingItem,
+}: CustomerMenuSectionProps) {
   const menuScrollRef = useRef<HTMLDivElement | null>(null);
   const [activeMenuIndex, setActiveMenuIndex] = useState(0);
   const displayedMenuItems = menuItems.slice(0, 20);
@@ -58,10 +72,10 @@ export function CustomerMenuSection({ menuItems, isLoading }: CustomerMenuSectio
             <Card
               key={item.id}
               data-menu-card
-              className="group min-w-[220px] shrink-0 snap-start overflow-hidden rounded-2xl border-none bg-card shadow-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:shadow-xl hover:shadow-orange-100/70"
+              className="group min-w-[220px] shrink-0 snap-start gap-0 overflow-hidden rounded-2xl border-none bg-card py-0 shadow-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:shadow-xl hover:shadow-orange-100/70"
             >
-              <CardContent className="space-y-3 p-3 lg:p-4">
-                <div className="relative h-32 overflow-hidden rounded-2xl bg-linear-to-br from-orange-100 via-amber-100 to-orange-200 transition-transform duration-500 group-hover:scale-[1.03]">
+              <CardContent className="space-y-1 p-0">
+                <div className="relative h-32 overflow-hidden rounded-b-2xl bg-linear-to-br from-orange-100 via-amber-100 to-orange-200 transition-transform duration-500 group-hover:scale-[1.03]">
                   {catalogItemImageUrl(item.imagePath) ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -71,24 +85,61 @@ export function CustomerMenuSection({ menuItems, isLoading }: CustomerMenuSectio
                     />
                   ) : null}
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.4),transparent_50%)]" />
+                  {hasDiscount(item.discount) ? (
+                    <Badge className="absolute top-2 right-2 border-0 bg-orange-500 text-[10px] font-semibold text-white shadow-sm">
+                      {discountLabel(item.discount)}
+                    </Badge>
+                  ) : null}
                   <div className="absolute inset-0 bg-linear-to-t from-black/5 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                   <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold tracking-wide text-orange-600 shadow-sm backdrop-blur-sm">
                     <span className="size-1.5 rounded-full bg-orange-500 animate-pulse" />
                     FRESH
                   </div>
                 </div>
-                <p className="line-clamp-2 min-h-10 text-sm font-semibold leading-tight text-gray-800 group-hover:text-gray-900">
-                  {item.name}
-                </p>
-                <div className="flex items-center justify-between pt-1">
-                  <p className="text-lg font-bold text-primary">${Number(item.price).toFixed(2)}</p>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="size-9 rounded-full bg-orange-50 text-orange-500 transition-all duration-300 hover:bg-orange-100 group-hover:bg-orange-500 group-hover:text-white group-hover:shadow-md group-hover:shadow-orange-500/30"
-                  >
-                    <ShoppingCart className="size-[18px]" />
-                  </Button>
+                <div className="space-y-1 px-2.5 pt-1.5 pb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="line-clamp-2 min-h-9 text-sm leading-tight font-semibold tracking-normal text-gray-800 group-hover:text-gray-900">
+                      {item.name}
+                    </p>
+                    <p className="shrink-0 truncate text-xs leading-tight font-medium tracking-normal text-muted-foreground">
+                      {item.businessName ?? "Unknown business"}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-baseline gap-2">
+                      {hasDiscount(item.discount) ? (
+                        <>
+                          <p className="text-sm font-semibold text-gray-400 line-through">
+                            {formatBirr(item.price)}
+                          </p>
+                          <p className="text-lg leading-none font-bold tracking-normal text-primary">
+                            {formatDiscountedBirr(item.price, item.discount)}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-lg leading-none font-bold tracking-normal text-primary">
+                          {formatBirr(item.price)}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-9 rounded-full bg-orange-50 text-orange-500 transition-all duration-300 hover:bg-orange-100 group-hover:bg-orange-500 group-hover:text-white group-hover:shadow-md group-hover:shadow-orange-500/30"
+                      onClick={() => {
+                        void onAddToCart?.(item);
+                      }}
+                      disabled={isAddingItem?.(item.id)}
+                      aria-label={`Add ${item.name} to cart`}
+                    >
+                      {isAddingItem?.(item.id) ? (
+                        <Spinner className="size-4" />
+                      ) : (
+                        <ShoppingCart className="size-[18px]" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

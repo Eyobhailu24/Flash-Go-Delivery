@@ -230,6 +230,10 @@ export async function fetchProductCategoryById(
 export type CategoryItem = {
   id: string;
   categoryId: string;
+  categoryNameId?: string;
+  categoryName?: string;
+  businessId?: string;
+  businessName?: string;
   name: string;
   description: string | null;
   imagePath: string | null;

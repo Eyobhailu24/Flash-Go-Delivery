@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
@@ -13,6 +14,12 @@ import {
   fetchPublicCategoryNames,
   type CategoryItem,
 } from "@/lib/admin-catalog-api";
+import {
+  discountLabel,
+  formatBirr,
+  formatDiscountedBirr,
+  hasDiscount,
+} from "@/lib/currency";
 
 export default function CategoryPage() {
   const searchParams = useSearchParams();
@@ -120,7 +127,7 @@ export default function CategoryPage() {
             {items.map((item) => (
               <Card key={item.id} className="overflow-hidden rounded-2xl border-none shadow-md">
                 <CardContent className="space-y-3 p-3">
-                  <div className="h-36 overflow-hidden rounded-xl bg-orange-100">
+                  <div className="relative h-36 overflow-hidden rounded-xl bg-orange-100">
                     {catalogItemImageUrl(item.imagePath) ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -129,9 +136,29 @@ export default function CategoryPage() {
                         className="h-full w-full object-cover"
                       />
                     ) : null}
+                    {hasDiscount(item.discount) ? (
+                      <Badge className="absolute top-2 right-2 border-0 bg-orange-500 text-[10px] font-semibold text-white shadow-sm">
+                        {discountLabel(item.discount)}
+                      </Badge>
+                    ) : null}
                   </div>
                   <p className="line-clamp-2 text-sm font-semibold text-gray-800">{item.name}</p>
-                  <p className="text-lg font-bold text-primary">${Number(item.price).toFixed(2)}</p>
+                  <div className="flex items-baseline gap-2">
+                    {hasDiscount(item.discount) ? (
+                      <>
+                        <p className="text-sm font-semibold text-gray-400 line-through">
+                          {formatBirr(item.price)}
+                        </p>
+                        <p className="text-lg font-bold text-primary">
+                          {formatDiscountedBirr(item.price, item.discount)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-lg font-bold text-primary">
+                        {formatBirr(item.price)}
+                      </p>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             ))}
