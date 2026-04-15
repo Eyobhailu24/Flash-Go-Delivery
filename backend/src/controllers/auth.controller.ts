@@ -10,7 +10,7 @@ import jwt from 'jsonwebtoken';
 import { createHash, randomInt } from 'node:crypto';
 import { z } from 'zod';
 import { db } from '../db.js';
-import { otpVerifications, users } from '../schema.js';
+import { customerProfile, otpVerifications, users } from '../schema.js';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2),
@@ -49,6 +49,31 @@ const changePasswordSchema = z.object({
     .string()
     .min(Number(process.env.PASSWORD_MIN_LENGTH ?? 8)),
 });
+
+const updateMeSchema = z.object({
+  fullName: z.string().trim().min(2).optional(),
+  email: z.string().trim().email().optional(),
+  phoneNumber: z.string().trim().min(8).optional(),
+});
+
+const upsertMyCustomerProfileSchema = z
+  .object({
+    addresses: z
+      .array(
+        z.object({
+          label: z.string().optional(),
+          address: z.string().trim().min(1),
+          lat: z.number().optional(),
+          lng: z.number().optional(),
+          isDefault: z.boolean().optional(),
+        }),
+      )
+      .optional(),
+    preferences: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, {
+    message: 'At least one field is required.',
+  });
 
 type OtpPurpose = 'signup_verification' | 'reset_password';
 
@@ -630,4 +655,136 @@ export const me = async (c: Context) => {
       phoneNumber: user.phoneNumber,
     },
   });
+};
+
+export const updateMe = async (c: Context) => {
+  const auth = requireAuth(c);
+  if (!auth) {
+    return c.json({ message: 'Unauthorized.' }, 401);
+  }
+
+  const parsed = updateMeSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ message: 'Invalid request payload.' }, 400);
+  }
+  if (Object.keys(parsed.data).length === 0) {
+    return c.json({ message: 'At least one field is required.' }, 400);
+  }
+
+  const patch: Partial<typeof users.$inferInsert> = {};
+  if (parsed.data.fullName !== undefined) {
+    patch.fullName = parsed.data.fullName.trim();
+  }
+  if (parsed.data.email !== undefined) {
+    patch.email = normalizeEmail(parsed.data.email);
+  }
+  if (parsed.data.phoneNumber !== undefined) {
+    patch.phoneNumber = normalizePhone(parsed.data.phoneNumber);
+  }
+
+  if (patch.email) {
+    const emailOwner = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, patch.email))
+      .limit(1);
+    if (emailOwner[0] && emailOwner[0].id !== auth.sub) {
+      return c.json({ message: 'Email is already registered.' }, 409);
+    }
+  }
+
+  if (patch.phoneNumber) {
+    const phoneOwner = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.phoneNumber, patch.phoneNumber))
+      .limit(1);
+    if (phoneOwner[0] && phoneOwner[0].id !== auth.sub) {
+      return c.json(
+        { message: 'Phone number is already registered.' },
+        409,
+      );
+    }
+  }
+
+  const [updated] = await db
+    .update(users)
+    .set(patch)
+    .where(eq(users.id, auth.sub))
+    .returning({
+      id: users.id,
+      fullName: users.fullName,
+      email: users.email,
+      role: users.role,
+      phoneNumber: users.phoneNumber,
+    });
+
+  if (!updated) {
+    return c.json({ message: 'User not found.' }, 404);
+  }
+
+  return c.json({ user: updated });
+};
+
+export const getMyCustomerProfile = async (c: Context) => {
+  const auth = requireAuth(c);
+  if (!auth) {
+    return c.json({ message: 'Unauthorized.' }, 401);
+  }
+
+  const rows = await db
+    .select()
+    .from(customerProfile)
+    .where(eq(customerProfile.userId, auth.sub))
+    .limit(1);
+
+  return c.json({ profile: rows[0] ?? null });
+};
+
+export const upsertMyCustomerProfile = async (c: Context) => {
+  const auth = requireAuth(c);
+  if (!auth) {
+    return c.json({ message: 'Unauthorized.' }, 401);
+  }
+
+  const parsed = upsertMyCustomerProfileSchema.safeParse(
+    await c.req.json(),
+  );
+  if (!parsed.success) {
+    return c.json({ message: 'Invalid request payload.' }, 400);
+  }
+
+  const existing = await db
+    .select({ userId: customerProfile.userId })
+    .from(customerProfile)
+    .where(eq(customerProfile.userId, auth.sub))
+    .limit(1);
+
+  const patch: Partial<typeof customerProfile.$inferInsert> = {};
+  if (parsed.data.addresses !== undefined) {
+    patch.addresses = parsed.data.addresses;
+  }
+  if (parsed.data.preferences !== undefined) {
+    patch.preferences = parsed.data.preferences;
+  }
+
+  if (existing[0]) {
+    const [updated] = await db
+      .update(customerProfile)
+      .set(patch)
+      .where(eq(customerProfile.userId, auth.sub))
+      .returning();
+    return c.json({ profile: updated });
+  }
+
+  const [created] = await db
+    .insert(customerProfile)
+    .values({
+      userId: auth.sub,
+      addresses: patch.addresses,
+      preferences: patch.preferences,
+      loyaltyPoints: 0,
+    })
+    .returning();
+  return c.json({ profile: created }, 201);
 };

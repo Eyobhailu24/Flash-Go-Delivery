@@ -1,34 +1,38 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Bell, MapPin, ShoppingCart } from "lucide-react";
-import { useState } from "react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import Image from 'next/image';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Bell, MapPin, ShoppingCart } from 'lucide-react';
+import { useState } from 'react';
+import {
+  Avatar,
+  AvatarFallback,
+} from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useAuth } from "@/contexts/auth-context";
-import { Input } from "@/components/ui/input";
+} from '@/components/ui/dropdown-menu';
+import { useAuth } from '@/contexts/auth-context';
+import { Input } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { Skeleton } from "@/components/ui/skeleton";
+} from '@/components/ui/popover';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import type { CartItemView } from "@/app/(customer)/_hooks/use-carts";
-import { catalogItemImageUrl } from "@/lib/admin-catalog-api";
-import { formatBirr } from "@/lib/currency";
+} from '@/components/ui/tooltip';
+import type { CartItemView } from '@/app/(customer)/_hooks/use-carts';
+import { catalogItemImageUrl } from '@/lib/admin-catalog-api';
+import { formatBirr } from '@/lib/currency';
 
 type CustomerTopNavbarProps = {
   firstName: string;
@@ -46,20 +50,22 @@ export function CustomerTopNavbar({
   userAddress,
   cartItems = [],
   cartTotalQuantity = 0,
-  cartSubtotal = "0.00",
+  cartSubtotal = '0.00',
   cartLoading = false,
 }: CustomerTopNavbarProps) {
   const router = useRouter();
   const { logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] =
+    useState(false);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
     try {
       await logout();
-      router.replace("/login");
+      router.replace('/login');
     } finally {
       setIsLoggingOut(false);
     }
@@ -68,6 +74,20 @@ export function CustomerTopNavbar({
   return (
     <header className="flex items-center gap-3 pt-2">
       <div className="flex flex-1 items-center gap-2">
+        <Link
+          href="/"
+          className="shrink-0 rounded-xl p-1 transition hover:scale-[1.02]"
+          aria-label="Go to home"
+        >
+          <Image
+            src="/flashlogo.png"
+            alt="FlashGo"
+            width={150}
+            height={60}
+            className="h-11 w-auto object-contain md:h-12"
+            priority
+          />
+        </Link>
         <Input
           placeholder="Search something"
           className="h-11 w-full max-w-[240px] rounded-full border-0 bg-orange-50 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-0 md:max-w-[320px]"
@@ -85,14 +105,25 @@ export function CustomerTopNavbar({
           <TooltipTrigger asChild>
             <div className="hidden h-11 items-center gap-1 rounded-full border-0 bg-orange-50 px-4 text-sm text-gray-500 shadow-sm md:flex">
               <MapPin className="size-4" />
-              <span className="max-w-[200px] truncate">{userAddress}</span>
+              <span className="max-w-[200px] truncate">
+                {userAddress}
+              </span>
             </div>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={8} className="max-w-sm">
-            <span className="wrap-break-word">{userAddress}</span>
+          <TooltipContent
+            side="bottom"
+            sideOffset={8}
+            className="max-w-sm"
+          >
+            <span className="wrap-break-word">
+              {userAddress}
+            </span>
           </TooltipContent>
         </Tooltip>
-        <Popover open={isCartOpen} onOpenChange={setIsCartOpen}>
+        <Popover
+          open={isCartOpen}
+          onOpenChange={setIsCartOpen}
+        >
           <PopoverTrigger asChild>
             <Button
               variant="ghost"
@@ -101,7 +132,7 @@ export function CustomerTopNavbar({
               aria-label="Cart"
               onMouseEnter={() => setIsCartOpen(true)}
               onMouseLeave={() => setIsCartOpen(false)}
-              onClick={() => router.push("/checkout")}
+              onClick={() => router.push('/checkout')}
             >
               <ShoppingCart className="size-5 text-gray-500" />
               {cartTotalQuantity > 0 ? (
@@ -133,7 +164,8 @@ export function CustomerTopNavbar({
                 </div>
               ) : cartItems.length === 0 ? (
                 <div className="rounded-xl bg-orange-50 px-3 py-6 text-center text-sm text-gray-500">
-                  Your cart is empty. Add delicious items to get started.
+                  Your cart is empty. Add delicious items to
+                  get started.
                 </div>
               ) : (
                 <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
@@ -143,10 +175,16 @@ export function CustomerTopNavbar({
                       className="flex items-center gap-2 rounded-xl bg-orange-50 p-2"
                     >
                       <div className="size-11 overflow-hidden rounded-lg bg-orange-100">
-                        {catalogItemImageUrl(item.itemImagePath) ? (
+                        {catalogItemImageUrl(
+                          item.itemImagePath,
+                        ) ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
-                            src={catalogItemImageUrl(item.itemImagePath) ?? ""}
+                            src={
+                              catalogItemImageUrl(
+                                item.itemImagePath,
+                              ) ?? ''
+                            }
                             alt={item.itemName}
                             className="h-full w-full object-cover"
                           />
@@ -157,7 +195,8 @@ export function CustomerTopNavbar({
                           {item.itemName}
                         </p>
                         <p className="text-xs text-gray-500">
-                          x{item.quantity} · {formatBirr(item.unitPrice)}
+                          x{item.quantity} ·{' '}
+                          {formatBirr(item.unitPrice)}
                         </p>
                       </div>
                     </div>
@@ -175,7 +214,7 @@ export function CustomerTopNavbar({
               <Button
                 type="button"
                 className="h-10 w-full rounded-xl bg-orange-500 text-white hover:bg-orange-400"
-                onClick={() => router.push("/checkout")}
+                onClick={() => router.push('/checkout')}
               >
                 Go to checkout
               </Button>
@@ -183,32 +222,57 @@ export function CustomerTopNavbar({
           </PopoverContent>
         </Popover>
         <div className="hidden text-right md:block">
-          <p className="text-sm font-semibold text-gray-900">Hello, {firstName}</p>
-          <p className="text-xs text-gray-500">{todayLabel}</p>
+          <p className="text-sm font-semibold text-gray-900">
+            Hello, {firstName}
+          </p>
+          <p className="text-xs text-gray-500">
+            {todayLabel}
+          </p>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button" className="rounded-full transition hover:opacity-90">
-              <Avatar size="lg" className="border-0 shadow-sm">
-                <AvatarFallback className="bg-orange-100 font-semibold text-orange-700">
-                  {firstName.slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40 rounded-xl border-0 shadow-md">
-            <DropdownMenuItem asChild className="focus:bg-orange-50 focus:text-orange-700">
-              <Link href="/profile">Profile</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="focus:bg-orange-50 focus:text-orange-700"
-              onClick={() => void handleLogout()}
-              disabled={isLoggingOut}
+        <div
+          onMouseEnter={() => setIsProfileMenuOpen(true)}
+          onMouseLeave={() => setIsProfileMenuOpen(false)}
+        >
+          <DropdownMenu
+            open={isProfileMenuOpen}
+            onOpenChange={setIsProfileMenuOpen}
+          >
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="rounded-full transition hover:opacity-90"
+                onClick={() => router.push('/profile')}
+              >
+                <Avatar
+                  size="lg"
+                  className="border-0 shadow-sm"
+                >
+                  <AvatarFallback className="bg-orange-100 font-semibold text-orange-700">
+                    {firstName.slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-40 rounded-xl border-0 shadow-md"
             >
-              {isLoggingOut ? "Logging out..." : "Logout"}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem
+                asChild
+                className="focus:bg-orange-50 focus:text-orange-700"
+              >
+                <Link href="/profile">Profile</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="focus:bg-orange-50 focus:text-orange-700"
+                onClick={() => void handleLogout()}
+                disabled={isLoggingOut}
+              >
+                {isLoggingOut ? 'Logging out...' : 'Logout'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <Button
           variant="ghost"
           size="icon"
