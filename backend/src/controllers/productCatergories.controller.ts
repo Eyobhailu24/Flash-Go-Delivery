@@ -8,24 +8,20 @@ import {
   resolveWriteBusinessId,
   type CatalogEnv,
 } from '../lib/catalogAccess.js';
-import { productCategories } from '../schema.js';
+import {
+  categoryNameCatalog,
+  productCategories,
+} from '../schema.js';
 
 const createCategorySchema = z.object({
   businessId: z.string().uuid().optional(),
-  name: z.string().trim().min(1),
-  imageUrl: z.string().trim().min(1).optional(),
+  categoryNameId: z.string().uuid(),
   sortOrder: z.number().int().optional(),
 });
 
 const updateCategorySchema = z
   .object({
-    name: z.string().trim().min(1).optional(),
-    imageUrl: z
-      .union([
-        z.string().trim().min(1),
-        z.literal('').transform(() => null),
-      ])
-      .optional(),
+    categoryNameId: z.string().uuid().optional(),
     sortOrder: z.number().int().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
@@ -35,6 +31,40 @@ const updateCategorySchema = z
 const idParamSchema = z.object({
   id: z.string().uuid(),
 });
+
+async function getCategoryNameById(id: string) {
+  const [row] = await db
+    .select()
+    .from(categoryNameCatalog)
+    .where(eq(categoryNameCatalog.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+function toCategoryResponse(row: {
+  id: string;
+  businessId: string;
+  categoryNameId: string;
+  sortOrder: number;
+  createdAt: Date;
+  categoryName: {
+    id: string;
+    name: string;
+    imagePath: string | null;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+}) {
+  return {
+    id: row.id,
+    businessId: row.businessId,
+    categoryNameId: row.categoryNameId,
+    sortOrder: row.sortOrder,
+    createdAt: row.createdAt,
+    categoryName: row.categoryName,
+  };
+}
 
 export const createProductCategory = async (
   c: Context<CatalogEnv>,
@@ -55,17 +85,34 @@ export const createProductCategory = async (
   );
   if (!scope.ok) return scope.response;
 
+  const chosenName = await getCategoryNameById(
+    parsed.data.categoryNameId,
+  );
+  if (!chosenName || !chosenName.isActive) {
+    return c.json(
+      { message: 'Category name not found.' },
+      400,
+    );
+  }
+
   const [created] = await db
     .insert(productCategories)
     .values({
       businessId: scope.businessId,
-      name: parsed.data.name.trim(),
-      imageUrl: parsed.data.imageUrl ?? undefined,
+      categoryNameId: parsed.data.categoryNameId,
       sortOrder: parsed.data.sortOrder ?? 0,
     })
     .returning();
 
-  return c.json({ category: created }, 201);
+  return c.json(
+    {
+      category: toCategoryResponse({
+        ...created,
+        categoryName: chosenName,
+      }),
+    },
+    201,
+  );
 };
 
 export const updateProductCategory = async (
@@ -105,11 +152,17 @@ export const updateProductCategory = async (
   const patch: Partial<
     typeof productCategories.$inferInsert
   > = {};
-  if (parsed.data.name !== undefined) {
-    patch.name = parsed.data.name.trim();
-  }
-  if (parsed.data.imageUrl !== undefined) {
-    patch.imageUrl = parsed.data.imageUrl;
+  if (parsed.data.categoryNameId !== undefined) {
+    const chosenName = await getCategoryNameById(
+      parsed.data.categoryNameId,
+    );
+    if (!chosenName || !chosenName.isActive) {
+      return c.json(
+        { message: 'Category name not found.' },
+        400,
+      );
+    }
+    patch.categoryNameId = parsed.data.categoryNameId;
   }
   if (parsed.data.sortOrder !== undefined) {
     patch.sortOrder = parsed.data.sortOrder;
@@ -125,7 +178,22 @@ export const updateProductCategory = async (
     return c.json({ message: 'Category not found.' }, 404);
   }
 
-  return c.json({ category: updated });
+  const categoryName = await getCategoryNameById(
+    updated.categoryNameId,
+  );
+  if (!categoryName) {
+    return c.json(
+      { message: 'Category name not found.' },
+      404,
+    );
+  }
+
+  return c.json({
+    category: toCategoryResponse({
+      ...updated,
+      categoryName,
+    }),
+  });
 };
 
 export const deleteProductCategory = async (
@@ -185,11 +253,28 @@ export const getAllProductCategories = async (
   const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
 
   const rows = await db
-    .select()
+    .select({
+      id: productCategories.id,
+      businessId: productCategories.businessId,
+      categoryNameId: productCategories.categoryNameId,
+      sortOrder: productCategories.sortOrder,
+      createdAt: productCategories.createdAt,
+      categoryNameIdValue: categoryNameCatalog.id,
+      categoryNameText: categoryNameCatalog.name,
+      categoryNameImagePath: categoryNameCatalog.imagePath,
+      categoryNameIsActive: categoryNameCatalog.isActive,
+      categoryNameCreatedAt: categoryNameCatalog.createdAt,
+      categoryNameUpdatedAt: categoryNameCatalog.updatedAt,
+    })
     .from(productCategories)
-    .where(
-      eq(productCategories.businessId, scope.businessId),
+    .innerJoin(
+      categoryNameCatalog,
+      eq(
+        productCategories.categoryNameId,
+        categoryNameCatalog.id,
+      ),
     )
+    .where(eq(productCategories.businessId, scope.businessId))
     .orderBy(
       asc(productCategories.sortOrder),
       asc(productCategories.createdAt),
@@ -198,7 +283,23 @@ export const getAllProductCategories = async (
     .offset(offset);
 
   return c.json({
-    categories: rows,
+    categories: rows.map((row) =>
+      toCategoryResponse({
+        id: row.id,
+        businessId: row.businessId,
+        categoryNameId: row.categoryNameId,
+        sortOrder: row.sortOrder,
+        createdAt: row.createdAt,
+        categoryName: {
+          id: row.categoryNameIdValue,
+          name: row.categoryNameText,
+          imagePath: row.categoryNameImagePath,
+          isActive: row.categoryNameIsActive,
+          createdAt: row.categoryNameCreatedAt,
+          updatedAt: row.categoryNameUpdatedAt,
+        },
+      }),
+    ),
     limit,
     offset,
   });
@@ -213,8 +314,27 @@ export const getProductCategoryById = async (
   }
 
   const [row] = await db
-    .select()
+    .select({
+      id: productCategories.id,
+      businessId: productCategories.businessId,
+      categoryNameId: productCategories.categoryNameId,
+      sortOrder: productCategories.sortOrder,
+      createdAt: productCategories.createdAt,
+      categoryNameIdValue: categoryNameCatalog.id,
+      categoryNameText: categoryNameCatalog.name,
+      categoryNameImagePath: categoryNameCatalog.imagePath,
+      categoryNameIsActive: categoryNameCatalog.isActive,
+      categoryNameCreatedAt: categoryNameCatalog.createdAt,
+      categoryNameUpdatedAt: categoryNameCatalog.updatedAt,
+    })
     .from(productCategories)
+    .innerJoin(
+      categoryNameCatalog,
+      eq(
+        productCategories.categoryNameId,
+        categoryNameCatalog.id,
+      ),
+    )
     .where(eq(productCategories.id, params.data.id))
     .limit(1);
 
@@ -226,5 +346,21 @@ export const getProductCategoryById = async (
     return c.json({ message: 'Category not found.' }, 404);
   }
 
-  return c.json({ category: row });
+  return c.json({
+    category: toCategoryResponse({
+      id: row.id,
+      businessId: row.businessId,
+      categoryNameId: row.categoryNameId,
+      sortOrder: row.sortOrder,
+      createdAt: row.createdAt,
+      categoryName: {
+        id: row.categoryNameIdValue,
+        name: row.categoryNameText,
+        imagePath: row.categoryNameImagePath,
+        isActive: row.categoryNameIsActive,
+        createdAt: row.categoryNameCreatedAt,
+        updatedAt: row.categoryNameUpdatedAt,
+      },
+    }),
+  });
 };

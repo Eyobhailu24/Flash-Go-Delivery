@@ -434,15 +434,19 @@ export const getAllCategoryItems = async (
   c: Context<CatalogEnv>,
 ) => {
   const categoryId = c.req.query('categoryId')?.trim();
-  if (!categoryId || !z.string().uuid().safeParse(categoryId).success) {
-    return c.json(
-      { message: 'categoryId query parameter is required.' },
-      400,
-    );
+  if (categoryId && !z.string().uuid().safeParse(categoryId).success) {
+    return c.json({ message: 'Invalid categoryId query parameter.' }, 400);
   }
-
-  const access = await assertCategoryAccess(c, categoryId);
-  if (!access.ok) return access.response;
+  if (categoryId) {
+    const [category] = await db
+      .select({ id: productCategories.id })
+      .from(productCategories)
+      .where(eq(productCategories.id, categoryId))
+      .limit(1);
+    if (!category) {
+      return c.json({ message: 'Category not found.' }, 404);
+    }
+  }
 
   const limitRaw = c.req.query('limit');
   const offsetRaw = c.req.query('offset');
@@ -455,7 +459,11 @@ export const getAllCategoryItems = async (
   const rows = await db
     .select()
     .from(categoryItems)
-    .where(eq(categoryItems.categoryId, categoryId))
+    .where(
+      categoryId
+        ? eq(categoryItems.categoryId, categoryId)
+        : undefined,
+    )
     .orderBy(
       asc(categoryItems.sortOrder),
       asc(categoryItems.createdAt),
@@ -488,8 +496,14 @@ export const getCategoryItemById = async (
     return c.json({ message: 'Item not found.' }, 404);
   }
 
-  const access = await assertCategoryAccess(c, row.categoryId);
-  if (!access.ok) return access.response;
+  const [category] = await db
+    .select({ id: productCategories.id })
+    .from(productCategories)
+    .where(eq(productCategories.id, row.categoryId))
+    .limit(1);
+  if (!category) {
+    return c.json({ message: 'Category not found.' }, 404);
+  }
 
   return c.json({ item: row });
 };

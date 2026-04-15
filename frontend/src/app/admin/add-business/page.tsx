@@ -74,6 +74,7 @@ type FormState = {
   businessName: string;
   businessType: string;
   address: string;
+  imageFile: File | null;
 };
 
 type SortField = "name" | "date";
@@ -87,6 +88,7 @@ const emptyForm = (): FormState => ({
   businessName: "",
   businessType: "",
   address: "",
+  imageFile: null,
 });
 
 function businessUsersFrom(list: User[]): User[] {
@@ -241,6 +243,8 @@ export default function AdminAddBusinessPage() {
         businessName,
         businessType: form.businessType.trim() || undefined,
         address: form.address.trim() || undefined,
+        image: form.imageFile,
+        status: "approved",
       });
 
       await refetch();
@@ -604,6 +608,18 @@ export default function AdminAddBusinessPage() {
                       value={form.address}
                       onChange={(e) => updateField("address", e.target.value)}
                       className="min-h-[100px] resize-y"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ab-image">Business image</Label>
+                    <Input
+                      id="ab-image"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        setForm((prev) => ({ ...prev, imageFile: file }));
+                      }}
                     />
                   </div>
                 </div>

@@ -12,11 +12,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchUserById, type User } from "@/app/admin/_hooks/use-users";
 import {
+  fetchCategoryNameCatalog,
   createProductCategory,
   fetchProductCategories,
+  type CategoryNameCatalog,
   type ProductCategory,
 } from "@/lib/admin-catalog-api";
-import { PRESET_PRODUCT_CATEGORY_NAMES } from "@/lib/product-category-presets";
 import { AuthApiError } from "@/lib/auth-api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -88,7 +89,7 @@ function filterCategories(
   if (!s) return list;
   return list.filter((c) => {
     const hay = [
-      c.name,
+      c.categoryName.name,
       String(c.sortOrder),
       format(new Date(c.createdAt), "MMM d, yyyy"),
       c.createdAt,
@@ -106,7 +107,9 @@ function sortCategories(
 ): ProductCategory[] {
   const next = [...list];
   const cmpName = (a: ProductCategory, b: ProductCategory) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    a.categoryName.name.localeCompare(b.categoryName.name, undefined, {
+      sensitivity: "base",
+    });
   const cmpOrder = (a: ProductCategory, b: ProductCategory) =>
     a.sortOrder - b.sortOrder;
   const cmpDate = (a: ProductCategory, b: ProductCategory) =>
@@ -143,6 +146,9 @@ export default function AdminProductCategoriesForBusinessPage() {
   const [owner, setOwner] = useState<User | null>(null);
   const [ownerError, setOwnerError] = useState<string | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [categoryNameOptions, setCategoryNameOptions] = useState<
+    CategoryNameCatalog[]
+  >([]);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
 
@@ -152,7 +158,8 @@ export default function AdminProductCategoriesForBusinessPage() {
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [presetName, setPresetName] = useState<string>("");
+  const [selectedCategoryNameId, setSelectedCategoryNameId] =
+    useState<string>("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -213,6 +220,30 @@ export default function AdminProductCategoriesForBusinessPage() {
 
   useEffect(() => {
     if (!idValid) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await fetchCategoryNameCatalog({
+          limit: 200,
+          offset: 0,
+          active: true,
+        });
+        if (!cancelled) {
+          setCategoryNameOptions(data.categoryNames);
+        }
+      } catch {
+        if (!cancelled) {
+          setCategoryNameOptions([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [idValid]);
+
+  useEffect(() => {
+    if (!idValid) return;
     const raw = window.localStorage.getItem(viewStorageKey(businessId));
     if (raw === "table" || raw === "cards") {
       queueMicrotask(() => setViewMode(raw));
@@ -233,7 +264,7 @@ export default function AdminProductCategoriesForBusinessPage() {
   }, [categories, search, sortField, sortDir]);
 
   const resetModal = () => {
-    setPresetName("");
+    setSelectedCategoryNameId("");
     setSubmitError(null);
   };
 
@@ -244,7 +275,7 @@ export default function AdminProductCategoriesForBusinessPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!idValid || !presetName.trim()) {
+    if (!idValid || !selectedCategoryNameId) {
       setSubmitError("Choose a category name from the list.");
       return;
     }
@@ -253,7 +284,7 @@ export default function AdminProductCategoriesForBusinessPage() {
     try {
       await createProductCategory({
         businessId,
-        name: presetName.trim(),
+        categoryNameId: selectedCategoryNameId,
       });
       await loadCategories();
       setModalOpen(false);
@@ -306,8 +337,8 @@ export default function AdminProductCategoriesForBusinessPage() {
                 : "Loading business…"}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Search and sort categories for this business. Preset names only when
-            adding.
+            Search and sort categories for this business. Add categories by
+            selecting a reusable catalog name.
           </p>
         </div>
         <Button
@@ -481,7 +512,7 @@ export default function AdminProductCategoriesForBusinessPage() {
                     className="cursor-pointer hover:bg-muted/50"
                     tabIndex={0}
                     role="button"
-                    aria-label={`Open menu items for category ${c.name}`}
+                    aria-label={`Open menu items for category ${c.categoryName.name}`}
                     onClick={() =>
                       router.push(
                         `/admin/product-categories/${businessId}/${c.id}`,
@@ -498,10 +529,12 @@ export default function AdminProductCategoriesForBusinessPage() {
                   >
                     <TableCell>
                       <div className="flex flex-col gap-0.5">
-                        <span className="font-medium">{c.name}</span>
-                        {c.imageUrl ? (
+                        <span className="font-medium">
+                          {c.categoryName.name}
+                        </span>
+                        {c.categoryName.imagePath ? (
                           <span className="text-xs text-muted-foreground truncate">
-                            {c.imageUrl}
+                            {c.categoryName.imagePath}
                           </span>
                         ) : null}
                       </div>
@@ -524,7 +557,7 @@ export default function AdminProductCategoriesForBusinessPage() {
                     className="h-full cursor-pointer shadow-none transition-colors hover:bg-accent/30"
                     tabIndex={0}
                     role="button"
-                    aria-label={`Open menu items for category ${c.name}`}
+                    aria-label={`Open menu items for category ${c.categoryName.name}`}
                     onClick={() =>
                       router.push(
                         `/admin/product-categories/${businessId}/${c.id}`,
@@ -542,15 +575,15 @@ export default function AdminProductCategoriesForBusinessPage() {
                     <CardHeader className="flex flex-row items-start gap-3 space-y-0 pb-2">
                       <Avatar className="size-10">
                         <AvatarFallback className="bg-primary/15 text-primary-foreground">
-                          {initials(c.name)}
+                          {initials(c.categoryName.name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
                         <CardTitle className="truncate text-base leading-tight">
-                          {c.name}
+                          {c.categoryName.name}
                         </CardTitle>
                         <CardDescription className="truncate">
-                          {c.imageUrl ?? "No image URL yet"}
+                          {c.categoryName.imagePath ?? "No image yet"}
                         </CardDescription>
                       </div>
                     </CardHeader>
@@ -578,8 +611,8 @@ export default function AdminProductCategoriesForBusinessPage() {
             <DialogHeader>
               <DialogTitle>Add category</DialogTitle>
               <DialogDescription>
-                Pick one preset name. It is saved as the category name for this
-                business.
+                Pick one reusable name from the master catalog for this
+                business category.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-2">
@@ -592,17 +625,20 @@ export default function AdminProductCategoriesForBusinessPage() {
               <div className="space-y-2">
                 <Label htmlFor="preset-category">Category</Label>
                 <Select
-                  value={presetName || undefined}
-                  onValueChange={setPresetName}
+                  value={selectedCategoryNameId || undefined}
+                  onValueChange={setSelectedCategoryNameId}
                   required
                 >
                   <SelectTrigger id="preset-category" className="w-full">
                     <SelectValue placeholder="Choose a category…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {PRESET_PRODUCT_CATEGORY_NAMES.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
+                    {categoryNameOptions.map((nameOption) => (
+                      <SelectItem
+                        key={nameOption.id}
+                        value={nameOption.id}
+                      >
+                        {nameOption.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -618,7 +654,10 @@ export default function AdminProductCategoriesForBusinessPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || !presetName}>
+              <Button
+                type="submit"
+                disabled={submitting || !selectedCategoryNameId}
+              >
                 {submitting ? "Saving…" : "Add"}
               </Button>
             </DialogFooter>

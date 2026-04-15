@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Bell, MapPin, ShoppingCart } from "lucide-react";
+import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/contexts/auth-context";
 import { Input } from "@/components/ui/input";
 
 type CustomerTopNavbarProps = {
@@ -24,6 +27,21 @@ export function CustomerTopNavbar({
   todayLabel,
   userAddress,
 }: CustomerTopNavbarProps) {
+  const router = useRouter();
+  const { logout } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      router.replace("/login");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   return (
     <header className="flex items-center gap-3 pt-2">
       <div className="flex flex-1 items-center gap-2">
@@ -70,8 +88,12 @@ export function CustomerTopNavbar({
             <DropdownMenuItem asChild className="focus:bg-orange-50 focus:text-orange-700">
               <Link href="/profile">Profile</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild className="focus:bg-orange-50 focus:text-orange-700">
-              <Link href="/logout">Logout</Link>
+            <DropdownMenuItem
+              className="focus:bg-orange-50 focus:text-orange-700"
+              onClick={() => void handleLogout()}
+              disabled={isLoggingOut}
+            >
+              {isLoggingOut ? "Logging out..." : "Logout"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

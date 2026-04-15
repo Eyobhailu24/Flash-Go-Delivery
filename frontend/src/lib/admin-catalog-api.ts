@@ -4,13 +4,28 @@ import {
   readAuthJson,
 } from "@/lib/auth-api";
 
+export type CategoryNameCatalog = {
+  id: string;
+  name: string;
+  imagePath: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CategoryNameCatalogListResponse = {
+  categoryNames: CategoryNameCatalog[];
+  limit: number;
+  offset: number;
+};
+
 export type ProductCategory = {
   id: string;
   businessId: string;
-  name: string;
-  imageUrl: string | null;
+  categoryNameId: string;
   sortOrder: number;
   createdAt: string;
+  categoryName: CategoryNameCatalog;
 };
 
 type CategoriesListResponse = {
@@ -18,6 +33,151 @@ type CategoriesListResponse = {
   limit: number;
   offset: number;
 };
+
+export async function fetchCategoryNameCatalog(
+  params: {
+    limit?: number;
+    offset?: number;
+    q?: string;
+    active?: boolean;
+  } = {},
+): Promise<CategoryNameCatalogListResponse> {
+  const q = new URLSearchParams({
+    limit: String(params.limit ?? 100),
+    offset: String(params.offset ?? 0),
+  });
+  if (params.q?.trim()) q.set("q", params.q.trim());
+  if (params.active !== undefined) {
+    q.set("active", params.active ? "true" : "false");
+  }
+  const res = await authFetch(
+    `/catalog/category-name-catalog?${q.toString()}`,
+  );
+  return readAuthJson<CategoryNameCatalogListResponse>(res);
+}
+
+export async function createCategoryNameCatalog(input: {
+  name: string;
+  isActive?: boolean;
+}): Promise<CategoryNameCatalog> {
+  const res = await authFetch("/catalog/category-name-catalog", {
+    method: "POST",
+    body: JSON.stringify({
+      name: input.name.trim(),
+      ...(input.isActive !== undefined
+        ? { isActive: input.isActive }
+        : {}),
+    }),
+  });
+  const data = await readAuthJson<{
+    categoryName: CategoryNameCatalog;
+  }>(res);
+  return data.categoryName;
+}
+
+export async function createCategoryNameCatalogMultipart(input: {
+  name: string;
+  isActive?: boolean;
+  image?: File | null;
+}): Promise<CategoryNameCatalog> {
+  const fd = new FormData();
+  fd.append("name", input.name.trim());
+  fd.append("isActive", input.isActive === false ? "false" : "true");
+  if (input.image && input.image.size > 0) {
+    fd.append("image", input.image);
+  }
+  const res = await authFetch("/catalog/category-name-catalog", {
+    method: "POST",
+    body: fd,
+  });
+  const data = await readAuthJson<{
+    categoryName: CategoryNameCatalog;
+  }>(res);
+  return data.categoryName;
+}
+
+export async function updateCategoryNameCatalog(
+  id: string,
+  input: { name?: string; isActive?: boolean },
+): Promise<CategoryNameCatalog> {
+  const body: { name?: string; isActive?: boolean } = {};
+  if (input.name !== undefined) body.name = input.name.trim();
+  if (input.isActive !== undefined) body.isActive = input.isActive;
+  const res = await authFetch(
+    `/catalog/category-name-catalog/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+  const data = await readAuthJson<{
+    categoryName: CategoryNameCatalog;
+  }>(res);
+  return data.categoryName;
+}
+
+export async function updateCategoryNameCatalogMultipart(
+  id: string,
+  input: {
+    name?: string;
+    isActive?: boolean;
+    image?: File | null;
+    removeImage?: boolean;
+  },
+): Promise<CategoryNameCatalog> {
+  const fd = new FormData();
+  if (input.name !== undefined) fd.append("name", input.name.trim());
+  if (input.isActive !== undefined) {
+    fd.append("isActive", input.isActive ? "true" : "false");
+  }
+  if (input.removeImage) {
+    fd.append("image", "");
+  } else if (input.image && input.image.size > 0) {
+    fd.append("image", input.image);
+  }
+  const res = await authFetch(
+    `/catalog/category-name-catalog/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: fd,
+    },
+  );
+  const data = await readAuthJson<{
+    categoryName: CategoryNameCatalog;
+  }>(res);
+  return data.categoryName;
+}
+
+export async function deleteCategoryNameCatalog(id: string): Promise<void> {
+  const res = await authFetch(
+    `/catalog/category-name-catalog/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
+  await readAuthJson<{ message: string; id: string }>(res);
+}
+
+export async function fetchPublicCategoryNames(
+  params: { limit?: number; offset?: number; q?: string } = {},
+): Promise<CategoryNameCatalogListResponse> {
+  const q = new URLSearchParams({
+    limit: String(params.limit ?? 100),
+    offset: String(params.offset ?? 0),
+  });
+  if (params.q?.trim()) q.set("q", params.q.trim());
+  const res = await fetch(
+    `${getApiBaseUrl()}/catalog/public/category-names?${q.toString()}`,
+    { credentials: "include" },
+  );
+  const data = (await res.json()) as CategoryNameCatalogListResponse & {
+    message?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.message ?? "Failed to load category names.");
+  }
+  return data;
+}
 
 export async function fetchProductCategories(
   businessId: string,
@@ -38,14 +198,14 @@ export async function fetchProductCategories(
 
 export async function createProductCategory(input: {
   businessId: string;
-  name: string;
+  categoryNameId: string;
   sortOrder?: number;
 }): Promise<ProductCategory> {
   const res = await authFetch("/catalog/product-categories", {
     method: "POST",
     body: JSON.stringify({
       businessId: input.businessId,
-      name: input.name.trim(),
+      categoryNameId: input.categoryNameId,
       ...(input.sortOrder !== undefined
         ? { sortOrder: input.sortOrder }
         : {}),
@@ -88,16 +248,17 @@ type CategoryItemsListResponse = {
 };
 
 export async function fetchCategoryItems(
-  categoryId: string,
-  params: { limit?: number; offset?: number } = {},
+  params: { categoryId?: string; limit?: number; offset?: number } = {},
 ): Promise<CategoryItemsListResponse> {
   const limit = params.limit ?? 100;
   const offset = params.offset ?? 0;
   const q = new URLSearchParams({
-    categoryId,
     limit: String(limit),
     offset: String(offset),
   });
+  if (params.categoryId?.trim()) {
+    q.set("categoryId", params.categoryId.trim());
+  }
   const res = await authFetch(`/catalog/category-items?${q.toString()}`);
   return readAuthJson<CategoryItemsListResponse>(res);
 }
@@ -136,6 +297,15 @@ export async function createCategoryItemMultipart(input: {
 
 /** Absolute URL for a stored upload path such as `/uploads/category-items/…`. */
 export function catalogItemImageUrl(imagePath: string | null): string | null {
+  if (!imagePath) return null;
+  const base = getApiBaseUrl();
+  const path = imagePath.startsWith("/") ? imagePath : `/${imagePath}`;
+  return `${base}${path}`;
+}
+
+export function catalogCategoryNameImageUrl(
+  imagePath: string | null,
+): string | null {
   if (!imagePath) return null;
   const base = getApiBaseUrl();
   const path = imagePath.startsWith("/") ? imagePath : `/${imagePath}`;

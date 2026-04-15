@@ -2,6 +2,10 @@ import { desc, eq } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db.js';
+import {
+  saveBusinessProfileImage,
+  tryRemoveBusinessProfileImage,
+} from '../lib/businessProfileImageUpload.js';
 import { businessProfile, users } from '../schema.js';
 
 const businessStatusValues = [
@@ -15,6 +19,7 @@ const createBusinessProfileSchema = z.object({
   businessName: z.string().trim().min(1),
   businessType: z.string().trim().min(1).optional(),
   address: z.string().trim().min(1).optional(),
+  imagePath: z.string().trim().min(1).optional(),
   status: z.enum(businessStatusValues).optional(),
   approvedDate: z.coerce.date().optional(),
 });
@@ -34,6 +39,12 @@ const updateBusinessProfileSchema = z
         z.literal('').transform(() => null),
       ])
       .optional(),
+    imagePath: z
+      .union([
+        z.string().trim().min(1),
+        z.literal('').transform(() => null),
+      ])
+      .optional(),
     status: z.enum(businessStatusValues).optional(),
     approvedDate: z.coerce.date().nullable().optional(),
   })
@@ -44,6 +55,13 @@ const updateBusinessProfileSchema = z
 const idParamSchema = z.object({
   id: z.string().uuid(),
 });
+
+function parseOptionalString(v: unknown): string | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t === '' ? undefined : t;
+}
 
 async function assertUserRole(
   userId: string,
@@ -58,24 +76,80 @@ async function assertUserRole(
 }
 
 export const createBusinessProfile = async (c: Context) => {
-  const parsed = createBusinessProfileSchema.safeParse(
-    await c.req.json(),
-  );
-  if (!parsed.success) {
-    return c.json(
-      { message: 'Invalid request payload.' },
-      400,
-    );
-  }
+  const ct = (c.req.header('content-type') ?? '').toLowerCase();
+  let userId: string;
+  let businessName: string;
+  let businessType: string | undefined;
+  let address: string | undefined;
+  let imagePath: string | undefined;
+  let status: (typeof businessStatusValues)[number] | undefined;
+  let approvedDate: Date | undefined;
 
-  const {
-    userId,
-    businessName,
-    businessType,
-    address,
-    status,
-    approvedDate,
-  } = parsed.data;
+  if (ct.includes('multipart/form-data')) {
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.parseBody()) as Record<string, unknown>;
+    } catch {
+      return c.json({ message: 'Invalid multipart body.' }, 400);
+    }
+
+    const parsedUserId = parseOptionalString(body.userId);
+    if (!parsedUserId || !z.string().uuid().safeParse(parsedUserId).success) {
+      return c.json({ message: 'Valid userId is required.' }, 400);
+    }
+    const parsedBusinessName = parseOptionalString(body.businessName);
+    if (!parsedBusinessName) {
+      return c.json({ message: 'Business name is required.' }, 400);
+    }
+
+    userId = parsedUserId;
+    businessName = parsedBusinessName;
+    businessType = parseOptionalString(body.businessType);
+    address = parseOptionalString(body.address);
+
+    const statusRaw = parseOptionalString(body.status);
+    if (statusRaw !== undefined) {
+      if (!businessStatusValues.includes(statusRaw as (typeof businessStatusValues)[number])) {
+        return c.json({ message: 'Invalid status value.' }, 400);
+      }
+      status = statusRaw as (typeof businessStatusValues)[number];
+    }
+
+    const approvedRaw = parseOptionalString(body.approvedDate);
+    if (approvedRaw !== undefined) {
+      const parsedApproved = z.coerce.date().safeParse(approvedRaw);
+      if (!parsedApproved.success) {
+        return c.json({ message: 'Invalid approvedDate value.' }, 400);
+      }
+      approvedDate = parsedApproved.data;
+    }
+
+    const img = body.image;
+    if (img instanceof File && img.size > 0) {
+      const saved = await saveBusinessProfileImage(img);
+      if (!saved.ok) {
+        return c.json({ message: saved.message }, 400);
+      }
+      imagePath = saved.publicPath;
+    }
+  } else {
+    const parsed = createBusinessProfileSchema.safeParse(
+      await c.req.json(),
+    );
+    if (!parsed.success) {
+      return c.json(
+        { message: 'Invalid request payload.' },
+        400,
+      );
+    }
+    userId = parsed.data.userId;
+    businessName = parsed.data.businessName;
+    businessType = parsed.data.businessType;
+    address = parsed.data.address;
+    imagePath = parsed.data.imagePath;
+    status = parsed.data.status;
+    approvedDate = parsed.data.approvedDate;
+  }
 
   const [owner] = await db
     .select({ id: users.id })
@@ -101,6 +175,7 @@ export const createBusinessProfile = async (c: Context) => {
         businessName: businessName.trim(),
         businessType: businessType ?? undefined,
         address: address ?? undefined,
+        imagePath: imagePath ?? undefined,
         status: status ?? 'pending',
         approvedDate: approvedDate ?? undefined,
       })
@@ -128,31 +203,110 @@ export const updateBusinessProfile = async (c: Context) => {
     return c.json({ message: 'Invalid user id.' }, 400);
   }
 
-  const parsed = updateBusinessProfileSchema.safeParse(
-    await c.req.json(),
-  );
-  if (!parsed.success) {
-    return c.json(
-      { message: 'Invalid request payload.' },
-      400,
-    );
+  const [existing] = await db
+    .select()
+    .from(businessProfile)
+    .where(eq(businessProfile.userId, params.data.id))
+    .limit(1);
+
+  if (!existing) {
+    return c.json({ message: 'Profile not found.' }, 404);
   }
 
   const patch: Partial<typeof businessProfile.$inferInsert> = {};
-  if (parsed.data.businessName !== undefined) {
-    patch.businessName = parsed.data.businessName.trim();
+  const ct = (c.req.header('content-type') ?? '').toLowerCase();
+  if (ct.includes('multipart/form-data')) {
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.parseBody()) as Record<string, unknown>;
+    } catch {
+      return c.json({ message: 'Invalid multipart body.' }, 400);
+    }
+
+    const businessName = parseOptionalString(body.businessName);
+    if (businessName !== undefined) patch.businessName = businessName;
+
+    if (body.businessType !== undefined) {
+      patch.businessType =
+        body.businessType === ''
+          ? null
+          : parseOptionalString(body.businessType) ?? null;
+    }
+
+    if (body.address !== undefined) {
+      patch.address =
+        body.address === '' ? null : parseOptionalString(body.address) ?? null;
+    }
+
+    const statusRaw = parseOptionalString(body.status);
+    if (statusRaw !== undefined) {
+      if (!businessStatusValues.includes(statusRaw as (typeof businessStatusValues)[number])) {
+        return c.json({ message: 'Invalid status value.' }, 400);
+      }
+      patch.status = statusRaw as (typeof businessStatusValues)[number];
+    }
+
+    if (body.approvedDate !== undefined) {
+      if (body.approvedDate === '') {
+        patch.approvedDate = null;
+      } else {
+        const parsedApproved = z.coerce.date().safeParse(body.approvedDate);
+        if (!parsedApproved.success) {
+          return c.json({ message: 'Invalid approvedDate value.' }, 400);
+        }
+        patch.approvedDate = parsedApproved.data;
+      }
+    }
+
+    const imageRemove = body.image === '';
+    const img = body.image;
+    if (img instanceof File && img.size > 0) {
+      const saved = await saveBusinessProfileImage(img);
+      if (!saved.ok) {
+        return c.json({ message: saved.message }, 400);
+      }
+      await tryRemoveBusinessProfileImage(existing.imagePath);
+      patch.imagePath = saved.publicPath;
+    } else if (imageRemove) {
+      await tryRemoveBusinessProfileImage(existing.imagePath);
+      patch.imagePath = null;
+    }
+  } else {
+    const parsed = updateBusinessProfileSchema.safeParse(
+      await c.req.json(),
+    );
+    if (!parsed.success) {
+      return c.json(
+        { message: 'Invalid request payload.' },
+        400,
+      );
+    }
+
+    if (parsed.data.businessName !== undefined) {
+      patch.businessName = parsed.data.businessName.trim();
+    }
+    if (parsed.data.businessType !== undefined) {
+      patch.businessType = parsed.data.businessType;
+    }
+    if (parsed.data.address !== undefined) {
+      patch.address = parsed.data.address;
+    }
+    if (parsed.data.imagePath !== undefined) {
+      patch.imagePath = parsed.data.imagePath;
+    }
+    if (parsed.data.status !== undefined) {
+      patch.status = parsed.data.status;
+    }
+    if (parsed.data.approvedDate !== undefined) {
+      patch.approvedDate = parsed.data.approvedDate;
+    }
   }
-  if (parsed.data.businessType !== undefined) {
-    patch.businessType = parsed.data.businessType;
-  }
-  if (parsed.data.address !== undefined) {
-    patch.address = parsed.data.address;
-  }
-  if (parsed.data.status !== undefined) {
-    patch.status = parsed.data.status;
-  }
-  if (parsed.data.approvedDate !== undefined) {
-    patch.approvedDate = parsed.data.approvedDate;
+
+  if (Object.keys(patch).length === 0) {
+    return c.json(
+      { message: 'At least one field is required.' },
+      400,
+    );
   }
 
   const [updated] = await db
@@ -160,10 +314,6 @@ export const updateBusinessProfile = async (c: Context) => {
     .set(patch)
     .where(eq(businessProfile.userId, params.data.id))
     .returning();
-
-  if (!updated) {
-    return c.json({ message: 'Profile not found.' }, 404);
-  }
 
   return c.json({ profile: updated });
 };
@@ -174,14 +324,21 @@ export const deleteBusinessProfile = async (c: Context) => {
     return c.json({ message: 'Invalid user id.' }, 400);
   }
 
+  const [existing] = await db
+    .select({ imagePath: businessProfile.imagePath })
+    .from(businessProfile)
+    .where(eq(businessProfile.userId, params.data.id))
+    .limit(1);
+  if (!existing) {
+    return c.json({ message: 'Profile not found.' }, 404);
+  }
+
   const [removed] = await db
     .delete(businessProfile)
     .where(eq(businessProfile.userId, params.data.id))
     .returning({ userId: businessProfile.userId });
 
-  if (!removed) {
-    return c.json({ message: 'Profile not found.' }, 404);
-  }
+  await tryRemoveBusinessProfileImage(existing.imagePath);
 
   return c.json({
     message: 'Profile deleted.',

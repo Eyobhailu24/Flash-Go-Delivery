@@ -63,8 +63,6 @@ driverProfiles.patch('/:id', updateDriverProfile);
 driverProfiles.delete('/:id', deleteDriverProfile);
 
 const businessProfiles = new Hono<Env>();
-businessProfiles.use('*', protect);
-businessProfiles.use('*', restrictTo('admin'));
 businessProfiles.get('/', getAllBusinessProfiles);
 businessProfiles.get('/:id', getBusinessProfileById);
 businessProfiles.post('/', createBusinessProfile);

@@ -193,7 +193,8 @@ export default function AdminCategoryItemsPage() {
     setListLoading(true);
     setListError(null);
     try {
-      const data = await fetchCategoryItems(categoryId, {
+      const data = await fetchCategoryItems({
+        categoryId,
         limit: 100,
         offset: 0,
       });
@@ -393,7 +394,7 @@ export default function AdminCategoryItemsPage() {
             </Link>
           </Button>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            {category ? category.name : "Category items"}
+            {category ? category.categoryName.name : "Category items"}
           </h1>
           <p className="text-sm text-muted-foreground">
             {owner

@@ -9,6 +9,7 @@ export const businessProfile = pgTable("business_profile", {
   businessName: text("business_name").notNull(),
   businessType: text("business_type"),
   address: text("address"),
+  imagePath: text("image_path"),
   status: businessStatusEnum("status").notNull().default("pending"),
   approvedDate: timestamp("approved_date", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
