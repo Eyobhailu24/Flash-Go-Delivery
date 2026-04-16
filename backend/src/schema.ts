@@ -5,6 +5,7 @@ export * from "./models/driverProfile.js";
 export * from "./models/businessProfile.js";
 export * from "./models/adminProfile.js";
 export * from "./models/orders.js";
+export * from "./models/orderDriverOffers.js";
 export * from "./models/orderItems.js";
 export * from "./models/payments.js";
 export * from "./models/applications.js";

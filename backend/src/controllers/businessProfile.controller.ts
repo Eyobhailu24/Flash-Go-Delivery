@@ -19,6 +19,8 @@ const createBusinessProfileSchema = z.object({
   businessName: z.string().trim().min(1),
   businessType: z.string().trim().min(1).optional(),
   address: z.string().trim().min(1).optional(),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
   imagePath: z.string().trim().min(1).optional(),
   status: z.enum(businessStatusValues).optional(),
   approvedDate: z.coerce.date().optional(),
@@ -39,6 +41,8 @@ const updateBusinessProfileSchema = z
         z.literal('').transform(() => null),
       ])
       .optional(),
+    latitude: z.number().min(-90).max(90).nullable().optional(),
+    longitude: z.number().min(-180).max(180).nullable().optional(),
     imagePath: z
       .union([
         z.string().trim().min(1),
@@ -63,6 +67,16 @@ function parseOptionalString(v: unknown): string | undefined {
   return t === '' ? undefined : t;
 }
 
+function parseOptionalCoordinate(v: unknown): number | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  if (t === '') return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 async function assertUserRole(
   userId: string,
   role: 'business',
@@ -81,6 +95,8 @@ export const createBusinessProfile = async (c: Context) => {
   let businessName: string;
   let businessType: string | undefined;
   let address: string | undefined;
+  let latitude: number | undefined;
+  let longitude: number | undefined;
   let imagePath: string | undefined;
   let status: (typeof businessStatusValues)[number] | undefined;
   let approvedDate: Date | undefined;
@@ -106,6 +122,14 @@ export const createBusinessProfile = async (c: Context) => {
     businessName = parsedBusinessName;
     businessType = parseOptionalString(body.businessType);
     address = parseOptionalString(body.address);
+    latitude = parseOptionalCoordinate(body.latitude);
+    longitude = parseOptionalCoordinate(body.longitude);
+    if (latitude === undefined || latitude < -90 || latitude > 90) {
+      return c.json({ message: 'Valid latitude is required.' }, 400);
+    }
+    if (longitude === undefined || longitude < -180 || longitude > 180) {
+      return c.json({ message: 'Valid longitude is required.' }, 400);
+    }
 
     const statusRaw = parseOptionalString(body.status);
     if (statusRaw !== undefined) {
@@ -146,6 +170,8 @@ export const createBusinessProfile = async (c: Context) => {
     businessName = parsed.data.businessName;
     businessType = parsed.data.businessType;
     address = parsed.data.address;
+    latitude = parsed.data.latitude;
+    longitude = parsed.data.longitude;
     imagePath = parsed.data.imagePath;
     status = parsed.data.status;
     approvedDate = parsed.data.approvedDate;
@@ -175,6 +201,8 @@ export const createBusinessProfile = async (c: Context) => {
         businessName: businessName.trim(),
         businessType: businessType ?? undefined,
         address: address ?? undefined,
+        latitude,
+        longitude,
         imagePath: imagePath ?? undefined,
         status: status ?? 'pending',
         approvedDate: approvedDate ?? undefined,
@@ -238,6 +266,30 @@ export const updateBusinessProfile = async (c: Context) => {
         body.address === '' ? null : parseOptionalString(body.address) ?? null;
     }
 
+    if (body.latitude !== undefined) {
+      if (body.latitude === '') {
+        patch.latitude = null;
+      } else {
+        const latitude = parseOptionalCoordinate(body.latitude);
+        if (latitude === undefined || latitude < -90 || latitude > 90) {
+          return c.json({ message: 'Invalid latitude value.' }, 400);
+        }
+        patch.latitude = latitude;
+      }
+    }
+
+    if (body.longitude !== undefined) {
+      if (body.longitude === '') {
+        patch.longitude = null;
+      } else {
+        const longitude = parseOptionalCoordinate(body.longitude);
+        if (longitude === undefined || longitude < -180 || longitude > 180) {
+          return c.json({ message: 'Invalid longitude value.' }, 400);
+        }
+        patch.longitude = longitude;
+      }
+    }
+
     const statusRaw = parseOptionalString(body.status);
     if (statusRaw !== undefined) {
       if (!businessStatusValues.includes(statusRaw as (typeof businessStatusValues)[number])) {
@@ -290,6 +342,12 @@ export const updateBusinessProfile = async (c: Context) => {
     }
     if (parsed.data.address !== undefined) {
       patch.address = parsed.data.address;
+    }
+    if (parsed.data.latitude !== undefined) {
+      patch.latitude = parsed.data.latitude;
+    }
+    if (parsed.data.longitude !== undefined) {
+      patch.longitude = parsed.data.longitude;
     }
     if (parsed.data.imagePath !== undefined) {
       patch.imagePath = parsed.data.imagePath;

@@ -112,6 +112,22 @@ export const createCart = async (c: Context<CartEnv>) => {
 
   if (existing) {
     if (existing.businessId !== businessId) {
+      const [existingCartItem] = await db
+        .select({ id: cartItems.id })
+        .from(cartItems)
+        .where(eq(cartItems.cartId, existing.id))
+        .limit(1);
+
+      if (!existingCartItem) {
+        const [reusedCart] = await db
+          .update(carts)
+          .set({ businessId })
+          .where(eq(carts.id, existing.id))
+          .returning();
+
+        return c.json({ cart: reusedCart }, 200);
+      }
+
       return c.json(
         {
           message:
@@ -528,6 +544,19 @@ export const removeCartItem = async (
     return c.json({ message: 'Cart item not found.' }, 404);
   }
 
+  const [remainingItem] = await db
+    .select({ id: cartItems.id })
+    .from(cartItems)
+    .where(eq(cartItems.cartId, cart.id))
+    .limit(1);
+
+  if (!remainingItem) {
+    await db
+      .update(carts)
+      .set({ status: 'abandoned' })
+      .where(eq(carts.id, cart.id));
+  }
+
   return c.json({
     message: 'Cart item removed.',
     id: removed.id,
@@ -569,6 +598,11 @@ export const clearCart = async (c: Context<CartEnv>) => {
       existingItems.map((item) => item.id),
     ),
   );
+
+  await db
+    .update(carts)
+    .set({ status: 'abandoned' })
+    .where(eq(carts.id, cart.id));
 
   return c.json({ message: 'Cart cleared.' });
 };

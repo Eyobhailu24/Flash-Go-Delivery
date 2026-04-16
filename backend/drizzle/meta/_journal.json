@@ -92,6 +92,20 @@
       "when": 1776600000000,
       "tag": "0012_payment_method_telebirr",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1776900000000,
+      "tag": "0013_business_profile_coordinates",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1777000000000,
+      "tag": "0014_driver_dispatch_offers",
+      "breakpoints": true
     }
   ]
 }

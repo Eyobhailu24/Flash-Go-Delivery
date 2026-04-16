@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { Context } from "hono";
 import { z } from "zod";
 import { db } from "../db.js";
@@ -8,7 +8,11 @@ import {
   businessProfile,
   cartItems,
   carts,
+  customerProfile,
   driverProfile,
+  driverLocations,
+  notifications,
+  orderDriverOffers,
   orderItems,
   orders,
   payments,
@@ -35,6 +39,60 @@ function toMoneyNumber(value: string | null): number {
 
 function toMoneyString(value: number): string {
   return value.toFixed(2);
+}
+
+function toRad(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+function haversineDistanceKm(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+): number {
+  const dLat = toRad(to.lat - from.lat);
+  const dLon = toRad(to.lng - from.lng);
+  const lat1 = toRad(from.lat);
+  const lat2 = toRad(to.lat);
+  const earthRadiusKm = 6371;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c;
+}
+
+function computeDeliveryFee(routeDistanceKm: number): number {
+  const extraKm = Math.max(0, Math.ceil(routeDistanceKm - 1));
+  return 50 + extraKm * 15;
+}
+
+function pickCustomerAddressCoordinates(
+  addresses:
+    | Array<{
+        label?: string;
+        address: string;
+        lat?: number;
+        lng?: number;
+        isDefault?: boolean;
+      }>
+    | null
+    | undefined,
+): { lat: number; lng: number } | null {
+  if (!addresses || addresses.length === 0) return null;
+  const defaultAddress = addresses.find((entry) => entry.isDefault);
+  const candidate = defaultAddress ?? addresses[0];
+  if (
+    typeof candidate?.lat !== "number" ||
+    typeof candidate?.lng !== "number" ||
+    !Number.isFinite(candidate.lat) ||
+    !Number.isFinite(candidate.lng)
+  ) {
+    return null;
+  }
+  return {
+    lat: candidate.lat,
+    lng: candidate.lng,
+  };
 }
 
 export const checkoutOrder = async (c: Context<OrderEnv>) => {
@@ -89,13 +147,85 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
     0,
   );
 
-  const driverRows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.role, "driver"), eq(users.status, "active")))
-    .orderBy(asc(users.createdAt))
-    .limit(1);
-  const assignedDriverId = driverRows[0]?.id ?? null;
+  const [businessRow, customerProfileRow] = await Promise.all([
+    db
+      .select({
+        latitude: businessProfile.latitude,
+        longitude: businessProfile.longitude,
+      })
+      .from(businessProfile)
+      .where(eq(businessProfile.userId, activeCart.businessId))
+      .limit(1),
+    db
+      .select({
+        addresses: customerProfile.addresses,
+      })
+      .from(customerProfile)
+      .where(eq(customerProfile.userId, customerId))
+      .limit(1),
+  ]);
+
+  const businessCoords =
+    typeof businessRow[0]?.latitude === "number" &&
+    typeof businessRow[0]?.longitude === "number"
+      ? {
+          lat: businessRow[0].latitude,
+          lng: businessRow[0].longitude,
+        }
+      : null;
+  const customerCoords = pickCustomerAddressCoordinates(
+    customerProfileRow[0]?.addresses,
+  );
+
+  const routeDistanceKm =
+    businessCoords && customerCoords
+      ? haversineDistanceKm(businessCoords, customerCoords)
+      : 0;
+  const deliveryFee = computeDeliveryFee(routeDistanceKm);
+
+  const driverCandidates = businessCoords
+    ? await db
+        .select({
+          id: users.id,
+          location: driverLocations.location,
+        })
+        .from(users)
+        .innerJoin(driverProfile, eq(driverProfile.userId, users.id))
+        .innerJoin(driverLocations, eq(driverLocations.driverId, users.id))
+        .where(
+          and(
+            eq(users.role, "driver"),
+            eq(users.status, "active"),
+            eq(driverProfile.isAvailable, true),
+          ),
+        )
+    : [];
+
+  const rankedDrivers = businessCoords
+    ? driverCandidates
+        .map((driver) => {
+          const lat = driver.location?.lat;
+          const lng = driver.location?.lng;
+          if (typeof lat !== "number" || typeof lng !== "number") return null;
+          const distanceToBusinessKm = haversineDistanceKm(
+            { lat, lng },
+            businessCoords,
+          );
+          return {
+            driverId: driver.id,
+            distanceToBusinessKm,
+          };
+        })
+        .filter(
+          (
+            entry,
+          ): entry is {
+            driverId: string;
+            distanceToBusinessKm: number;
+          } => Boolean(entry),
+        )
+        .sort((a, b) => a.distanceToBusinessKm - b.distanceToBusinessKm)
+    : [];
 
   const result = await db.transaction(async (tx) => {
     const createdOrders = await tx
@@ -103,11 +233,12 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
       .values({
         customerId,
         businessId: activeCart.businessId,
-        driverId: assignedDriverId,
+        driverId: null,
         orderType,
         status: "pending",
         totalPrice: toMoneyString(subtotal),
-        deliveryFee: "0.00",
+        deliveryFee: toMoneyString(deliveryFee),
+        routeDistanceKm: toMoneyString(routeDistanceKm),
       })
       .returning();
     const createdOrder = createdOrders[0];
@@ -139,11 +270,37 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
       .set({ status: "checked_out" })
       .where(eq(carts.id, activeCart.id));
 
+    if (rankedDrivers.length > 0) {
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 30_000);
+      await tx.insert(orderDriverOffers).values(
+        rankedDrivers.map((driver, index) => ({
+          orderId: createdOrder.id,
+          driverId: driver.driverId,
+          rank: index + 1,
+          status: index === 0 ? "pending" : "queued",
+          distanceToBusinessKm: driver.distanceToBusinessKm.toFixed(2),
+          offeredAt: index === 0 ? now : null,
+          expiresAt: index === 0 ? expiresAt : null,
+        })),
+      );
+
+      const firstDriver = rankedDrivers[0];
+      await tx.insert(notifications).values({
+        userId: firstDriver.driverId,
+        type: "order_incoming",
+        title: "Order incoming",
+        message:
+          "A new nearby delivery request is waiting for your response.",
+      });
+    }
+
     return {
       order: createdOrder,
       payment: createdPayments[0],
       orderItemsCount: values.length,
-      assignedDriverId,
+      assignedDriverId: null,
+      offeredDriversCount: rankedDrivers.length,
     };
   });
 

@@ -14,6 +14,7 @@ import type {
   AuthUser,
   ChangePasswordInput,
   LoginInput,
+  LoginResult,
   ResetPasswordInput,
   SignupInput,
   VerifyOtpInput,
@@ -23,10 +24,11 @@ type AuthContextValue = {
   user: AuthUser | null;
   isReady: boolean;
   refreshUser: () => Promise<void>;
-  login: (input: LoginInput) => Promise<void>;
+  login: (input: LoginInput) => Promise<LoginResult>;
   logout: () => Promise<void>;
   signup: (input: SignupInput) => Promise<{ phoneNumber: string }>;
   verifySignupOtp: (input: VerifyOtpInput) => Promise<void>;
+  resendSignupOtp: (phoneNumber: string) => Promise<void>;
   forgotPassword: (phoneNumber: string) => Promise<void>;
   resetPassword: (input: ResetPasswordInput) => Promise<void>;
   changePassword: (input: ChangePasswordInput) => Promise<void>;
@@ -75,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (input: LoginInput) => {
+  const login = useCallback(async (input: LoginInput): Promise<LoginResult> => {
     const res = await authFetch("/auth/login", {
       method: "POST",
       body: JSON.stringify({
@@ -83,8 +85,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password: input.password,
       }),
     });
-    const data = await readAuthJson<{ user: AuthUser }>(res);
+    const data = (await res.json()) as {
+      message?: string;
+      user?: AuthUser;
+      requiresVerification?: boolean;
+      phoneNumber?: string;
+    };
+
+    if (!res.ok) {
+      if (
+        res.status === 403 &&
+        data.requiresVerification &&
+        typeof data.phoneNumber === "string"
+      ) {
+        setUser(null);
+        return {
+          requiresVerification: true,
+          phoneNumber: data.phoneNumber,
+        };
+      }
+      const msg =
+        typeof data.message === "string" ? data.message : "Request failed";
+      throw new Error(msg);
+    }
+
+    if (!data.user) {
+      throw new Error("Login succeeded but user payload is missing.");
+    }
     setUser(data.user);
+    return { requiresVerification: false };
   }, []);
 
   const logout = useCallback(async () => {
@@ -116,6 +145,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({
         phoneNumber: input.phoneNumber.replace(/\s+/g, ""),
         otp: input.otp.trim(),
+      }),
+    });
+    await readAuthJson<{ message: string }>(res);
+  }, []);
+
+  const resendSignupOtp = useCallback(async (phoneNumber: string) => {
+    const res = await authFetch("/auth/resend-signup-otp", {
+      method: "POST",
+      body: JSON.stringify({
+        phoneNumber: phoneNumber.replace(/\s+/g, ""),
       }),
     });
     await readAuthJson<{ message: string }>(res);
@@ -163,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       signup,
       verifySignupOtp,
+      resendSignupOtp,
       forgotPassword,
       resetPassword,
       changePassword,
@@ -175,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       signup,
       verifySignupOtp,
+      resendSignupOtp,
       forgotPassword,
       resetPassword,
       changePassword,

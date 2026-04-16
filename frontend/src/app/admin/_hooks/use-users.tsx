@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
 /** Reference implementation for admin feature hooks; general rules live in `frontend/AGENTS.md`. */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from 'react';
 import {
   authFetch,
   AuthApiError,
   readAuthJson,
-} from "@/lib/auth-api";
+} from '@/lib/auth-api';
 
 export type User = {
   id: string;
@@ -21,8 +21,15 @@ export type User = {
   createdAt: string;
 };
 
-export type UserRole = "customer" | "driver" | "business" | "admin";
-export type UserStatus = "active" | "inactive" | "suspended";
+export type UserRole =
+  | 'customer'
+  | 'driver'
+  | 'business'
+  | 'admin';
+export type UserStatus =
+  | 'active'
+  | 'inactive'
+  | 'suspended';
 
 export type CreateUserInput = {
   fullName: string;
@@ -51,16 +58,22 @@ type UsersApiResponse = {
 };
 
 /** GET /users/:id */
-export async function fetchUserById(id: string): Promise<User> {
-  const res = await authFetch(`/users/${encodeURIComponent(id)}`);
+export async function fetchUserById(
+  id: string,
+): Promise<User> {
+  const res = await authFetch(
+    `/users/${encodeURIComponent(id)}`,
+  );
   const data = await readAuthJson<{ user: User }>(res);
   return data.user;
 }
 
 /** POST /users */
-export async function postUser(input: CreateUserInput): Promise<User> {
-  const res = await authFetch("/users", {
-    method: "POST",
+export async function postUser(
+  input: CreateUserInput,
+): Promise<User> {
+  const res = await authFetch('/users', {
+    method: 'POST',
     body: JSON.stringify(input),
   });
   const data = await readAuthJson<{ user: User }>(res);
@@ -72,10 +85,13 @@ export async function patchUser(
   id: string,
   patch: UpdateUserInput,
 ): Promise<User> {
-  const res = await authFetch(`/users/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  const res = await authFetch(
+    `/users/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    },
+  );
   const data = await readAuthJson<{ user: User }>(res);
   return data.user;
 }
@@ -85,9 +101,12 @@ export async function removeUser(id: string): Promise<{
   message: string;
   id: string;
 }> {
-  const res = await authFetch(`/users/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
+  const res = await authFetch(
+    `/users/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+    },
+  );
   return readAuthJson<{ message: string; id: string }>(res);
 }
 
@@ -122,7 +141,8 @@ export function useUsers(params: UseUsersParams = {}) {
         const res = await authFetch(
           `/users?limit=${encodeURIComponent(String(l))}&offset=${encodeURIComponent(String(o))}`,
         );
-        const data = await readAuthJson<UsersApiResponse>(res);
+        const data =
+          await readAuthJson<UsersApiResponse>(res);
         setUsers(data.users);
         setLimit(data.limit);
         setOffset(data.offset);
@@ -131,7 +151,7 @@ export function useUsers(params: UseUsersParams = {}) {
         setError(
           e instanceof AuthApiError
             ? e.message
-            : "Could not load users. Try signing in as an admin.",
+            : 'Could not load users. Try signing in as an admin.',
         );
       } finally {
         setLoading(false);
@@ -152,7 +172,10 @@ export function useUsers(params: UseUsersParams = {}) {
     return fetchUsers(limitParam, offsetParam);
   }, [fetchUsers, limitParam, offsetParam]);
 
-  const getUserById = useCallback((id: string) => fetchUserById(id), []);
+  const getUserById = useCallback(
+    (id: string) => fetchUserById(id),
+    [],
+  );
 
   const createUser = useCallback(
     async (input: CreateUserInput) => {

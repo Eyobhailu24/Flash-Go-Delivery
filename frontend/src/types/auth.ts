@@ -25,6 +25,10 @@ export type LoginInput = {
   password: string;
 };
 
+export type LoginResult =
+  | { requiresVerification: false }
+  | { requiresVerification: true; phoneNumber: string };
+
 export type ChangePasswordInput = {
   currentPassword: string;
   newPassword: string;

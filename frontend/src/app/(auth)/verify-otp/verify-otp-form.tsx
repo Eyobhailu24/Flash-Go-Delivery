@@ -18,10 +18,12 @@ export function VerifyOtpForm() {
   const phoneParam = searchParams.get("phone")?.trim() ?? "";
   const normalizedPhone = phoneParam.replace(/\s+/g, "");
 
-  const { verifySignupOtp, user, isReady } = useAuth();
+  const { verifySignupOtp, resendSignupOtp, user, isReady } = useAuth();
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
     if (isReady && user) {
@@ -32,6 +34,7 @@ export function VerifyOtpForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     if (normalizedPhone.length < 8) {
       setError("Invalid phone. Start again from sign up.");
       return;
@@ -49,6 +52,24 @@ export function VerifyOtpForm() {
       setError(err instanceof AuthApiError ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function onResend() {
+    setError(null);
+    setInfo(null);
+    if (normalizedPhone.length < 8) {
+      setError("Invalid phone. Start again from sign up.");
+      return;
+    }
+    setResending(true);
+    try {
+      await resendSignupOtp(normalizedPhone);
+      setInfo("OTP sent (or recently sent). Please check your phone.");
+    } catch (err) {
+      setError(err instanceof AuthApiError ? err.message : "Could not resend OTP.");
+    } finally {
+      setResending(false);
     }
   }
 
@@ -98,6 +119,11 @@ export function VerifyOtpForm() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
+        {info ? (
+          <Alert>
+            <AlertDescription>{info}</AlertDescription>
+          </Alert>
+        ) : null}
 
         <div className="space-y-2">
           <Label htmlFor="verify-otp">One-time code</Label>
@@ -119,6 +145,15 @@ export function VerifyOtpForm() {
 
         <Button type="submit" className="h-11 w-full text-base" disabled={submitting}>
           {submitting ? <Spinner className="size-5" /> : "Verify & continue"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full text-base"
+          disabled={resending}
+          onClick={() => void onResend()}
+        >
+          {resending ? <Spinner className="size-5" /> : "Resend OTP"}
         </Button>
       </form>
 

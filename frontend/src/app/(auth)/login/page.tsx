@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
-import { AuthApiError } from "@/lib/auth-api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,10 +39,16 @@ export default function LoginPage() {
     }
     setSubmitting(true);
     try {
-      await login({ phoneNumber: phone, password });
+      const result = await login({ phoneNumber: phone, password });
+      if (result.requiresVerification) {
+        router.push(
+          `/verify-otp?phone=${encodeURIComponent(result.phoneNumber)}`,
+        );
+        return;
+      }
       router.replace("/");
     } catch (err) {
-      setError(err instanceof AuthApiError ? err.message : "Something went wrong.");
+      setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
     }

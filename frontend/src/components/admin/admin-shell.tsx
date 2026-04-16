@@ -47,6 +47,12 @@ const nav = [
     exact: false,
   },
   {
+    href: '/admin/add-driver',
+    label: 'Add Driver',
+    icon: UsersIcon,
+    exact: false,
+  },
+  {
     href: '/admin/products',
     label: 'Products',
     icon: PackageIcon,

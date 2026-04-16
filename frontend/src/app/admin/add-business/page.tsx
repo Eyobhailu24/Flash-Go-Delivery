@@ -1,31 +1,39 @@
-"use client";
+'use client';
 
-import { format } from "date-fns";
+import { format } from 'date-fns';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   LayoutGridIcon,
   TableIcon,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   postUser,
   useUsers,
   type User,
-} from "@/app/admin/_hooks/use-users";
-import { postBusinessProfile } from "@/lib/admin-business-api";
-import { AuthApiError } from "@/lib/auth-api";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+} from '@/app/admin/_hooks/use-users';
+import { MapLocationPickerDialog } from '@/components/admin/map-location-picker-dialog';
+import { postBusinessProfile } from '@/lib/admin-business-api';
+import { AuthApiError } from '@/lib/auth-api';
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from '@/components/ui/alert';
+import {
+  Avatar,
+  AvatarFallback,
+} from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -33,24 +41,24 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from '@/components/ui/empty';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -58,11 +66,14 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+} from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from '@/components/ui/toggle-group';
 
-const VIEW_STORAGE_KEY = "admin-add-business-view";
+const VIEW_STORAGE_KEY = 'admin-add-business-view';
 
 const PASSWORD_MIN = 8;
 
@@ -74,46 +85,54 @@ type FormState = {
   businessName: string;
   businessType: string;
   address: string;
+  latitude: number | null;
+  longitude: number | null;
   imageFile: File | null;
 };
 
-type SortField = "name" | "date";
-type SortDir = "asc" | "desc";
+type SortField = 'name' | 'date';
+type SortDir = 'asc' | 'desc';
 
 const emptyForm = (): FormState => ({
-  fullName: "",
-  email: "",
-  phoneNumber: "",
-  password: "",
-  businessName: "",
-  businessType: "",
-  address: "",
+  fullName: '',
+  email: '',
+  phoneNumber: '',
+  password: '',
+  businessName: '',
+  businessType: '',
+  address: '',
+  latitude: null,
+  longitude: null,
   imageFile: null,
 });
 
 function businessUsersFrom(list: User[]): User[] {
-  return list.filter((u) => u.role === "business");
+  return list.filter((u) => u.role === 'business');
 }
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  if (parts.length === 0) return '?';
+  if (parts.length === 1)
+    return parts[0]!.slice(0, 2).toUpperCase();
   return `${parts[0]![0]!}${parts[1]![0]!}`.toUpperCase();
 }
 
-function filterBusinessUsers(list: User[], q: string): User[] {
+function filterBusinessUsers(
+  list: User[],
+  q: string,
+): User[] {
   const s = q.trim().toLowerCase();
   if (!s) return list;
   return list.filter((u) => {
     const hay = [
       u.fullName,
       u.email,
-      u.phoneNumber ?? "",
+      u.phoneNumber ?? '',
       u.status,
-      "business",
+      'business',
     ]
-      .join(" ")
+      .join(' ')
       .toLowerCase();
     return hay.includes(s);
   });
@@ -127,18 +146,19 @@ function sortBusinessUsers(
   const next = [...list];
   const cmpName = (a: User, b: User) =>
     a.fullName.localeCompare(b.fullName, undefined, {
-      sensitivity: "base",
+      sensitivity: 'base',
     });
   const cmpDate = (a: User, b: User) =>
-    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    new Date(a.createdAt).getTime() -
+    new Date(b.createdAt).getTime();
 
-  if (field === "name") {
+  if (field === 'name') {
     return next.sort((a, b) =>
-      dir === "asc" ? cmpName(a, b) : cmpName(b, a),
+      dir === 'asc' ? cmpName(a, b) : cmpName(b, a),
     );
   }
   return next.sort((a, b) =>
-    dir === "asc" ? cmpDate(a, b) : cmpDate(b, a),
+    dir === 'asc' ? cmpDate(a, b) : cmpDate(b, a),
   );
 }
 
@@ -153,25 +173,33 @@ export default function AdminAddBusinessPage() {
     [users],
   );
 
-  const [search, setSearch] = useState("");
-  const [sortField, setSortField] = useState<SortField>("date");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [search, setSearch] = useState('');
+  const [sortField, setSortField] =
+    useState<SortField>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [viewMode, setViewMode] = useState<
+    'table' | 'cards'
+  >('table');
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [mapModalOpen, setMapModalOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<
+    string | null
+  >(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(VIEW_STORAGE_KEY);
-    if (raw === "table" || raw === "cards") {
+    const raw = window.localStorage.getItem(
+      VIEW_STORAGE_KEY,
+    );
+    if (raw === 'table' || raw === 'cards') {
       queueMicrotask(() => setViewMode(raw));
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
     window.localStorage.setItem(VIEW_STORAGE_KEY, viewMode);
   }, [viewMode]);
 
@@ -183,7 +211,10 @@ export default function AdminAddBusinessPage() {
     );
   }, [businessUsers, search, sortField, sortDir]);
 
-  const updateField = (key: keyof FormState, value: string) => {
+  const updateField = (
+    key: keyof FormState,
+    value: string,
+  ) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -208,23 +239,36 @@ export default function AdminAddBusinessPage() {
     const phoneTrim = form.phoneNumber.trim();
 
     if (fullName.length < 2) {
-      setSubmitError("Full name must be at least 2 characters.");
+      setSubmitError(
+        'Full name must be at least 2 characters.',
+      );
       return;
     }
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setSubmitError("Enter a valid email address.");
+    if (
+      !email ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ) {
+      setSubmitError('Enter a valid email address.');
       return;
     }
     if (phoneTrim && phoneTrim.length < 8) {
-      setSubmitError("Phone number must be at least 8 characters if provided.");
+      setSubmitError(
+        'Phone number must be at least 8 characters if provided.',
+      );
       return;
     }
     if (password.length < PASSWORD_MIN) {
-      setSubmitError(`Password must be at least ${PASSWORD_MIN} characters.`);
+      setSubmitError(
+        `Password must be at least ${PASSWORD_MIN} characters.`,
+      );
       return;
     }
     if (!businessName) {
-      setSubmitError("Business name is required.");
+      setSubmitError('Business name is required.');
+      return;
+    }
+    if (form.latitude === null || form.longitude === null) {
+      setSubmitError('Business map location is required.');
       return;
     }
 
@@ -234,7 +278,7 @@ export default function AdminAddBusinessPage() {
         fullName,
         email,
         password,
-        role: "business",
+        role: 'business',
         ...(phoneTrim ? { phoneNumber: phoneTrim } : {}),
       });
 
@@ -243,8 +287,10 @@ export default function AdminAddBusinessPage() {
         businessName,
         businessType: form.businessType.trim() || undefined,
         address: form.address.trim() || undefined,
+        latitude: form.latitude,
+        longitude: form.longitude,
         image: form.imageFile,
-        status: "approved",
+        status: 'approved',
       });
 
       await refetch();
@@ -254,7 +300,7 @@ export default function AdminAddBusinessPage() {
       const msg =
         err instanceof AuthApiError
           ? err.message
-          : "Something went wrong. Try again.";
+          : 'Something went wrong. Try again.';
       setSubmitError(msg);
     } finally {
       setSubmitting(false);
@@ -269,8 +315,9 @@ export default function AdminAddBusinessPage() {
             Business accounts
           </h1>
           <p className="text-sm text-muted-foreground">
-            Search and sort business users (up to 200 per load). Use Add
-            business to create an account and profile.
+            Search and sort business users (up to 200 per
+            load). Use Add business to create an account and
+            profile.
           </p>
         </div>
         <Button
@@ -304,12 +351,17 @@ export default function AdminAddBusinessPage() {
               />
             </div>
             <div className="ml-auto flex shrink-0 flex-nowrap items-center gap-2">
-              <Button size="sm" onClick={() => setModalOpen(true)}>
+              <Button
+                size="sm"
+                onClick={() => setModalOpen(true)}
+              >
                 Add business
               </Button>
               <Select
                 value={sortField}
-                onValueChange={(v) => setSortField(v as SortField)}
+                onValueChange={(v) =>
+                  setSortField(v as SortField)
+                }
               >
                 <SelectTrigger
                   className="h-9 w-38 shrink-0 sm:w-40"
@@ -319,7 +371,9 @@ export default function AdminAddBusinessPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="date">Date joined</SelectItem>
+                  <SelectItem value="date">
+                    Date joined
+                  </SelectItem>
                 </SelectContent>
               </Select>
               <div
@@ -329,11 +383,15 @@ export default function AdminAddBusinessPage() {
               >
                 <Button
                   type="button"
-                  variant={sortDir === "asc" ? "secondary" : "ghost"}
+                  variant={
+                    sortDir === 'asc'
+                      ? 'secondary'
+                      : 'ghost'
+                  }
                   size="icon-sm"
                   className="size-9 rounded-none border-0 shadow-none"
-                  onClick={() => setSortDir("asc")}
-                  aria-pressed={sortDir === "asc"}
+                  onClick={() => setSortDir('asc')}
+                  aria-pressed={sortDir === 'asc'}
                   title="Ascending (A→Z, oldest first for dates)"
                   aria-label="Sort ascending"
                 >
@@ -341,11 +399,15 @@ export default function AdminAddBusinessPage() {
                 </Button>
                 <Button
                   type="button"
-                  variant={sortDir === "desc" ? "secondary" : "ghost"}
+                  variant={
+                    sortDir === 'desc'
+                      ? 'secondary'
+                      : 'ghost'
+                  }
                   size="icon-sm"
                   className="size-9 rounded-none border-0 border-l border-input shadow-none"
-                  onClick={() => setSortDir("desc")}
-                  aria-pressed={sortDir === "desc"}
+                  onClick={() => setSortDir('desc')}
+                  aria-pressed={sortDir === 'desc'}
                   title="Descending (Z→A, newest first for dates)"
                   aria-label="Sort descending"
                 >
@@ -356,20 +418,31 @@ export default function AdminAddBusinessPage() {
                 type="single"
                 value={viewMode}
                 onValueChange={(v) => {
-                  if (v === "table" || v === "cards") setViewMode(v);
+                  if (v === 'table' || v === 'cards')
+                    setViewMode(v);
                 }}
                 variant="outline"
                 spacing={0}
                 className="shrink-0"
                 aria-label="View mode"
               >
-                <ToggleGroupItem value="table" aria-label="Table view">
+                <ToggleGroupItem
+                  value="table"
+                  aria-label="Table view"
+                >
                   <TableIcon className="size-4" />
-                  <span className="hidden sm:inline">Table</span>
+                  <span className="hidden sm:inline">
+                    Table
+                  </span>
                 </ToggleGroupItem>
-                <ToggleGroupItem value="cards" aria-label="Card view">
+                <ToggleGroupItem
+                  value="cards"
+                  aria-label="Card view"
+                >
                   <LayoutGridIcon className="size-4" />
-                  <span className="hidden sm:inline">Cards</span>
+                  <span className="hidden sm:inline">
+                    Cards
+                  </span>
                 </ToggleGroupItem>
               </ToggleGroup>
             </div>
@@ -386,9 +459,12 @@ export default function AdminAddBusinessPage() {
           ) : businessUsers.length === 0 ? (
             <Empty className="min-h-[200px] border border-dashed">
               <EmptyHeader>
-                <EmptyTitle>No business users yet</EmptyTitle>
+                <EmptyTitle>
+                  No business users yet
+                </EmptyTitle>
                 <EmptyDescription>
-                  Use Add business to create the first account and profile.
+                  Use Add business to create the first
+                  account and profile.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -397,19 +473,24 @@ export default function AdminAddBusinessPage() {
               <EmptyHeader>
                 <EmptyTitle>No businesses match</EmptyTitle>
                 <EmptyDescription>
-                  Try another search term or refresh the list.
+                  Try another search term or refresh the
+                  list.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
-          ) : viewMode === "table" ? (
+          ) : viewMode === 'table' ? (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>User</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Phone</TableHead>
-                  <TableHead className="hidden lg:table-cell">Joined</TableHead>
+                  <TableHead className="hidden md:table-cell">
+                    Phone
+                  </TableHead>
+                  <TableHead className="hidden lg:table-cell">
+                    Joined
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -417,18 +498,24 @@ export default function AdminAddBusinessPage() {
                   <TableRow key={u.id}>
                     <TableCell>
                       <div className="flex flex-col gap-0.5">
-                        <span className="font-medium">{u.fullName}</span>
+                        <span className="font-medium">
+                          {u.fullName}
+                        </span>
                         <span className="text-xs text-muted-foreground">
                           {u.email}
                         </span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">business</Badge>
+                      <Badge variant="secondary">
+                        business
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-1">
-                        <Badge variant="outline">{u.status}</Badge>
+                        <Badge variant="outline">
+                          {u.status}
+                        </Badge>
                         {u.isVerified ? (
                           <Badge className="bg-primary/15 text-primary-foreground hover:bg-primary/20">
                             Verified
@@ -437,10 +524,13 @@ export default function AdminAddBusinessPage() {
                       </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {u.phoneNumber ?? "—"}
+                      {u.phoneNumber ?? '—'}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-muted-foreground">
-                      {format(new Date(u.createdAt), "MMM d, yyyy")}
+                      {format(
+                        new Date(u.createdAt),
+                        'MMM d, yyyy',
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -468,8 +558,12 @@ export default function AdminAddBusinessPage() {
                     </CardHeader>
                     <CardContent className="flex flex-col gap-2 pt-0">
                       <div className="flex flex-wrap gap-1.5">
-                        <Badge variant="secondary">business</Badge>
-                        <Badge variant="outline">{u.status}</Badge>
+                        <Badge variant="secondary">
+                          business
+                        </Badge>
+                        <Badge variant="outline">
+                          {u.status}
+                        </Badge>
                         {u.isVerified ? (
                           <Badge className="bg-primary/15 text-primary-foreground hover:bg-primary/20">
                             Verified
@@ -477,8 +571,11 @@ export default function AdminAddBusinessPage() {
                         ) : null}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {u.phoneNumber ?? "No phone"} ·{" "}
-                        {format(new Date(u.createdAt), "MMM d, yyyy")}
+                        {u.phoneNumber ?? 'No phone'} ·{' '}
+                        {format(
+                          new Date(u.createdAt),
+                          'MMM d, yyyy',
+                        )}
                       </p>
                     </CardContent>
                   </Card>
@@ -489,7 +586,10 @@ export default function AdminAddBusinessPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={modalOpen} onOpenChange={handleOpenChange}>
+      <Dialog
+        open={modalOpen}
+        onOpenChange={handleOpenChange}
+      >
         <DialogContent
           className="flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col gap-0 p-0 sm:max-w-lg"
           showCloseButton
@@ -501,8 +601,10 @@ export default function AdminAddBusinessPage() {
             <DialogHeader className="shrink-0 border-b px-4 py-4 sm:px-6">
               <DialogTitle>Add business</DialogTitle>
               <DialogDescription>
-                Creates a user with role{" "}
-                <span className="font-medium text-foreground">business</span>{" "}
+                Creates a user with role{' '}
+                <span className="font-medium text-foreground">
+                  business
+                </span>{' '}
                 and a business profile.
               </DialogDescription>
             </DialogHeader>
@@ -512,7 +614,9 @@ export default function AdminAddBusinessPage() {
                 {submitError ? (
                   <Alert variant="destructive">
                     <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>{submitError}</AlertDescription>
+                    <AlertDescription>
+                      {submitError}
+                    </AlertDescription>
                   </Alert>
                 ) : null}
 
@@ -521,13 +625,18 @@ export default function AdminAddBusinessPage() {
                     Account
                   </p>
                   <div className="space-y-2">
-                    <Label htmlFor="ab-fullName">Full name</Label>
+                    <Label htmlFor="ab-fullName">
+                      Full name
+                    </Label>
                     <Input
                       id="ab-fullName"
                       autoComplete="name"
                       value={form.fullName}
                       onChange={(e) =>
-                        updateField("fullName", e.target.value)
+                        updateField(
+                          'fullName',
+                          e.target.value,
+                        )
                       }
                       required
                     />
@@ -539,31 +648,43 @@ export default function AdminAddBusinessPage() {
                       type="email"
                       autoComplete="email"
                       value={form.email}
-                      onChange={(e) => updateField("email", e.target.value)}
+                      onChange={(e) =>
+                        updateField('email', e.target.value)
+                      }
                       required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ab-phone">Phone (optional)</Label>
+                    <Label htmlFor="ab-phone">
+                      Phone (optional)
+                    </Label>
                     <Input
                       id="ab-phone"
                       type="tel"
                       autoComplete="tel"
                       value={form.phoneNumber}
                       onChange={(e) =>
-                        updateField("phoneNumber", e.target.value)
+                        updateField(
+                          'phoneNumber',
+                          e.target.value,
+                        )
                       }
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ab-password">Password</Label>
+                    <Label htmlFor="ab-password">
+                      Password
+                    </Label>
                     <Input
                       id="ab-password"
                       type="password"
                       autoComplete="new-password"
                       value={form.password}
                       onChange={(e) =>
-                        updateField("password", e.target.value)
+                        updateField(
+                          'password',
+                          e.target.value,
+                        )
                       }
                       required
                       minLength={PASSWORD_MIN}
@@ -578,47 +699,99 @@ export default function AdminAddBusinessPage() {
                     Business profile
                   </p>
                   <div className="space-y-2">
-                    <Label htmlFor="ab-businessName">Business name</Label>
+                    <Label htmlFor="ab-businessName">
+                      Business name
+                    </Label>
                     <Input
                       id="ab-businessName"
                       value={form.businessName}
                       onChange={(e) =>
-                        updateField("businessName", e.target.value)
+                        updateField(
+                          'businessName',
+                          e.target.value,
+                        )
                       }
                       required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ab-businessType">Business type</Label>
+                    <Label htmlFor="ab-businessType">
+                      Business type
+                    </Label>
                     <Input
                       id="ab-businessType"
                       placeholder="e.g. Restaurant, Retail"
                       value={form.businessType}
                       onChange={(e) =>
-                        updateField("businessType", e.target.value)
+                        updateField(
+                          'businessType',
+                          e.target.value,
+                        )
                       }
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ab-address">Address</Label>
+                    <Label htmlFor="ab-address">
+                      Address
+                    </Label>
                     <Textarea
                       id="ab-address"
                       rows={4}
                       placeholder="Street, city, region…"
                       value={form.address}
-                      onChange={(e) => updateField("address", e.target.value)}
+                      onChange={(e) =>
+                        updateField(
+                          'address',
+                          e.target.value,
+                        )
+                      }
                       className="min-h-[100px] resize-y"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ab-image">Business image</Label>
+                    <Label>Business map location</Label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setMapModalOpen(true)
+                        }
+                      >
+                        {form.latitude !== null &&
+                        form.longitude !== null
+                          ? 'Update map location'
+                          : 'Pick location on map'}
+                      </Button>
+                      {form.latitude !== null &&
+                      form.longitude !== null ? (
+                        <p className="text-xs text-muted-foreground">
+                          {form.latitude.toFixed(6)},{' '}
+                          {form.longitude.toFixed(6)}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Required for business profile
+                          location.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ab-image">
+                      Business image
+                    </Label>
                     <Input
                       id="ab-image"
                       type="file"
                       accept="image/png,image/jpeg,image/webp,image/gif"
                       onChange={(e) => {
-                        const file = e.target.files?.[0] ?? null;
-                        setForm((prev) => ({ ...prev, imageFile: file }));
+                        const file =
+                          e.target.files?.[0] ?? null;
+                        setForm((prev) => ({
+                          ...prev,
+                          imageFile: file,
+                        }));
                       }}
                     />
                   </div>
@@ -636,12 +809,25 @@ export default function AdminAddBusinessPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting}>
-                {submitting ? "Saving…" : "Create business"}
+                {submitting ? 'Saving…' : 'Create business'}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <MapLocationPickerDialog
+        open={mapModalOpen}
+        onOpenChange={setMapModalOpen}
+        initialLatitude={form.latitude}
+        initialLongitude={form.longitude}
+        onConfirm={({ latitude, longitude }) =>
+          setForm((prev) => ({
+            ...prev,
+            latitude,
+            longitude,
+          }))
+        }
+      />
     </div>
   );
 }

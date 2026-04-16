@@ -7,6 +7,7 @@ const LOCATION_ERROR_MESSAGE = "Could not detect your location.";
 
 type UseLiveAddressResult = {
   liveAddress: string | null;
+  coordinates: { latitude: number; longitude: number } | null;
   loading: boolean;
   error: string | null;
   refreshAddress: () => Promise<void>;
@@ -14,6 +15,10 @@ type UseLiveAddressResult = {
 
 export function useLiveAddress(): UseLiveAddressResult {
   const [liveAddress, setLiveAddress] = useState<string | null>(null);
+  const [coordinates, setCoordinates] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +47,11 @@ export function useLiveAddress(): UseLiveAddressResult {
         position.coords.longitude,
       );
 
+      setCoordinates({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      });
+
       if (!response?.formattedAddress) {
         setError(LOCATION_ERROR_MESSAGE);
         return;
@@ -61,6 +71,7 @@ export function useLiveAddress(): UseLiveAddressResult {
 
   return {
     liveAddress,
+    coordinates,
     loading,
     error,
     refreshAddress,

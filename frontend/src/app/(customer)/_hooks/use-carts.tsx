@@ -300,7 +300,17 @@ export function useCarts() {
       setError(null);
       try {
         await deleteCartItem(cartId, itemId);
-        await loadCartDetails(cartId);
+        const carts = await refreshActiveCarts();
+        const updatedCart = carts.find((cart) => cart.id === cartId);
+
+        if (updatedCart) {
+          await loadCartDetails(updatedCart.id);
+        } else {
+          setActiveCart(null);
+          setActiveCartItems([]);
+          setCartItemsView([]);
+          setActiveCartSummary(null);
+        }
       } catch (e) {
         const nextError =
           e instanceof AuthApiError
@@ -314,7 +324,7 @@ export function useCarts() {
         );
       }
     },
-    [loadCartDetails],
+    [loadCartDetails, refreshActiveCarts],
   );
 
   return useMemo(

@@ -14,6 +14,8 @@ export type BusinessProfile = {
   businessName: string;
   businessType: string | null;
   address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   imagePath: string | null;
   status: BusinessProfileStatus;
   approvedDate: string | null;
@@ -25,6 +27,8 @@ export type CreateBusinessProfileInput = {
   businessName: string;
   businessType?: string;
   address?: string;
+  latitude: number;
+  longitude: number;
   image?: File | null;
   status?: BusinessProfileStatus;
 };
@@ -47,6 +51,8 @@ export async function postBusinessProfile(
     if (type) fd.append("businessType", type);
     const addr = input.address?.trim();
     if (addr) fd.append("address", addr);
+    fd.append("latitude", String(input.latitude));
+    fd.append("longitude", String(input.longitude));
     if (input.status) fd.append("status", input.status);
     fd.append("image", input.image);
 
@@ -66,6 +72,8 @@ export async function postBusinessProfile(
   if (type) body.businessType = type;
   const addr = input.address?.trim();
   if (addr) body.address = addr;
+  body.latitude = input.latitude;
+  body.longitude = input.longitude;
   if (input.status) body.status = input.status;
 
   const res = await authFetch("/profiles/businesses", {

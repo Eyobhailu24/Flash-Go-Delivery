@@ -6,6 +6,7 @@ import {
   login,
   logout,
   me,
+  resendSignupOtp,
   resetPassword,
   signup,
   updateMe,
@@ -21,6 +22,7 @@ authRoutes.get("/customer-profile", getMyCustomerProfile);
 authRoutes.patch("/customer-profile", upsertMyCustomerProfile);
 authRoutes.post("/signup", signup);
 authRoutes.post("/verify-otp", verifySignupOtp);
+authRoutes.post("/resend-signup-otp", resendSignupOtp);
 authRoutes.post("/login", login);
 authRoutes.post("/change-password", changePassword);
 authRoutes.post("/forgot-password", forgotPassword);

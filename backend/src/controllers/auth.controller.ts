@@ -104,6 +104,9 @@ const otpExpiryMinutes = Number(
 const otpMaxAttempts = Number(
   process.env.OTP_MAX_ATTEMPTS ?? 5,
 );
+const otpResendCooldownSeconds = Number(
+  process.env.OTP_RESEND_COOLDOWN_SECONDS ?? 45,
+);
 const otpTemplate =
   process.env.AFRO_SMS_TEMPLATE_OTP ??
   'Your FlashGo OTP is {{CODE}}. It expires in {{MINUTES}} minutes.';
@@ -221,6 +224,42 @@ async function createOtp(
   });
 
   return otp;
+}
+
+async function issueSignupOtpWithCooldown(
+  phoneNumber: string,
+): Promise<{ sent: boolean; waitSeconds: number }> {
+  const latest = await db
+    .select({
+      createdAt: otpVerifications.createdAt,
+    })
+    .from(otpVerifications)
+    .where(
+      and(
+        eq(otpVerifications.phoneNumber, phoneNumber),
+        eq(otpVerifications.purpose, 'signup_verification'),
+      ),
+    )
+    .orderBy(desc(otpVerifications.createdAt))
+    .limit(1);
+
+  const nowMs = Date.now();
+  const latestCreatedAt = latest[0]?.createdAt;
+  if (latestCreatedAt) {
+    const elapsedSeconds = Math.floor(
+      (nowMs - latestCreatedAt.getTime()) / 1000,
+    );
+    if (elapsedSeconds < otpResendCooldownSeconds) {
+      return {
+        sent: false,
+        waitSeconds: otpResendCooldownSeconds - elapsedSeconds,
+      };
+    }
+  }
+
+  const otp = await createOtp(phoneNumber, 'signup_verification');
+  await sendOtpSms(phoneNumber, otp);
+  return { sent: true, waitSeconds: 0 };
 }
 
 async function verifyOtp(
@@ -382,11 +421,7 @@ export const signup = async (c: Context) => {
       .where(eq(users.id, existing[0].id));
   }
 
-  const otp = await createOtp(
-    phoneNumber,
-    'signup_verification',
-  );
-  await sendOtpSms(phoneNumber, otp);
+  await issueSignupOtpWithCooldown(phoneNumber);
 
   return c.json({
     message: 'Signup started. OTP sent to phone number.',
@@ -467,8 +502,17 @@ export const login = async (c: Context) => {
   }
 
   if (!user.isVerified) {
+    const otpResult = await issueSignupOtpWithCooldown(phoneNumber);
     return c.json(
-      { message: 'Please verify your phone number first.' },
+      {
+        message: otpResult.sent
+          ? 'Phone not verified. OTP sent to your phone.'
+          : `Phone not verified. OTP was sent recently. Please wait ${otpResult.waitSeconds}s.`,
+        requiresVerification: true,
+        phoneNumber,
+        otpSent: otpResult.sent,
+        otpWaitSeconds: otpResult.waitSeconds,
+      },
       403,
     );
   }
@@ -489,6 +533,43 @@ export const login = async (c: Context) => {
       role: user.role,
       phoneNumber: user.phoneNumber,
     },
+  });
+};
+
+export const resendSignupOtp = async (c: Context) => {
+  const parsed = forgotPasswordSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json(
+      { message: 'Invalid request payload.' },
+      400,
+    );
+  }
+
+  const phoneNumber = normalizePhone(parsed.data.phoneNumber);
+  const result = await db
+    .select({
+      id: users.id,
+      isVerified: users.isVerified,
+    })
+    .from(users)
+    .where(eq(users.phoneNumber, phoneNumber))
+    .limit(1);
+  const user = result[0];
+  if (!user) {
+    return c.json({ message: 'User not found.' }, 404);
+  }
+  if (user.isVerified) {
+    return c.json({ message: 'Phone number is already verified.' }, 409);
+  }
+
+  const otpResult = await issueSignupOtpWithCooldown(phoneNumber);
+  return c.json({
+    message: otpResult.sent
+      ? 'OTP sent to your phone.'
+      : `OTP was sent recently. Please wait ${otpResult.waitSeconds}s.`,
+    phoneNumber,
+    otpSent: otpResult.sent,
+    otpWaitSeconds: otpResult.waitSeconds,
   });
 };
 

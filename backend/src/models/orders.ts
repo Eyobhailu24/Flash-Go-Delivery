@@ -21,6 +21,7 @@ export const orders = pgTable(
     deliveryFee: numeric("delivery_fee", { precision: 12, scale: 2 })
       .notNull()
       .default("0"),
+    routeDistanceKm: numeric("route_distance_km", { precision: 8, scale: 2 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

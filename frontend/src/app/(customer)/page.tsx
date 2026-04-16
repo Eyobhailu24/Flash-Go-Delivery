@@ -10,6 +10,7 @@ import { CustomerMenuSection } from "@/components/customer/customer-menu-section
 import { CustomerTopNavbar } from "@/components/customer/customer-top-navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 import { useCarts } from "./_hooks/use-carts";
@@ -23,12 +24,16 @@ import {
   businessProfileImageUrl,
   fetchBusinessProfiles,
 } from "@/lib/admin-business-api";
+import { formatDistanceKm, haversineDistanceKm } from "@/lib/distance";
 
 type Restaurant = {
   id: string;
   businessName: string;
   address: string;
   imagePath: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  distanceKm: number | null;
 };
 
 export default function CustomerHomePage() {
@@ -63,7 +68,7 @@ export default function CustomerHomePage() {
   );
 
   const firstName = user?.fullName?.split(" ")[0] ?? "Guest";
-  const { liveAddress, loading: loadingLiveAddress } = useLiveAddress();
+  const { liveAddress, coordinates, loading: loadingLiveAddress } = useLiveAddress();
   const profileAddress =
     (user as { address?: string } | null)?.address?.trim() || "";
   const userAddress = loadingLiveAddress
@@ -116,7 +121,24 @@ export default function CustomerHomePage() {
             businessName: profile.businessName,
             address: profile.address?.trim() || "Address not provided",
             imagePath: profile.imagePath,
-          }));
+            latitude: profile.latitude,
+            longitude: profile.longitude,
+            distanceKm:
+              coordinates &&
+              profile.latitude !== null &&
+              profile.longitude !== null
+                ? haversineDistanceKm(coordinates, {
+                    latitude: profile.latitude,
+                    longitude: profile.longitude,
+                  })
+                : null,
+          }))
+          .sort((a, b) => {
+            if (a.distanceKm === null && b.distanceKm === null) return 0;
+            if (a.distanceKm === null) return 1;
+            if (b.distanceKm === null) return -1;
+            return a.distanceKm - b.distanceKm;
+          });
         setRestaurants(next);
       } catch {
         if (!cancelled) setRestaurants([]);
@@ -125,7 +147,7 @@ export default function CustomerHomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [coordinates]);
 
   useEffect(() => {
     let cancelled = false;
@@ -246,7 +268,7 @@ export default function CustomerHomePage() {
           className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <div className="flex snap-x snap-mandatory gap-4">
-            {restaurants.map((restaurant) => (
+            {restaurants.map((restaurant, index) => (
               <Card
                 key={restaurant.id}
                 data-restaurant-card
@@ -270,13 +292,29 @@ export default function CustomerHomePage() {
                     )}
                   </div>
                   <div className="space-y-1.5">
-                    <p className="font-bold text-gray-800 transition-colors group-hover:text-orange-600">
-                      {restaurant.businessName}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-gray-800 transition-colors group-hover:text-orange-600">
+                        {restaurant.businessName}
+                      </p>
+                      {restaurant.distanceKm !== null && index < 3 ? (
+                        <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">
+                          Nearest
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="flex items-center gap-1 text-xs font-medium text-gray-500 transition-colors group-hover:text-gray-700">
                       <MapPin className="size-3.5 text-gray-400" />
                       <span className="truncate max-w-[140px]">{restaurant.address}</span>
                     </div>
+                    {loadingLiveAddress ? (
+                      <Skeleton className="h-3 w-24 bg-orange-100/80" />
+                    ) : (
+                      <p className="text-[11px] font-medium text-orange-600">
+                        {restaurant.distanceKm !== null
+                          ? formatDistanceKm(restaurant.distanceKm)
+                          : "Distance unavailable"}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
