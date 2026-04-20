@@ -209,7 +209,8 @@ export default function AdminOrdersPage() {
     return [...map.values()];
   }, [drivers, detail?.driver]);
 
-  const itemsEditable = detail?.payment?.status === "pending";
+  const itemsEditable =
+    detail?.payment?.status === "pending" && Boolean(detail.order.businessId);
 
   const openOrder = (id: string) => {
     setSelectedId(id);

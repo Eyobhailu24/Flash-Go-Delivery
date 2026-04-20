@@ -17,6 +17,7 @@ import { catalogItemImageUrl } from "@/lib/admin-catalog-api";
 import { formatBirr } from "@/lib/currency";
 import { useCarts } from "../_hooks/use-carts";
 import {
+  estimateCheckoutOrder,
   type CheckoutPaymentMethod,
   useCheckout,
 } from "../_hooks/use-checkout";
@@ -80,6 +81,12 @@ export default function CustomerCheckoutPage() {
     loadNotifications,
   } = useNotifications();
   const { placeOrder, loading: checkoutLoading } = useCheckout();
+  const [pricingPreview, setPricingPreview] = useState<{
+    routeDistanceKm: string;
+    deliveryFee: string;
+    serviceCharge: string;
+    totalAmount: string;
+  } | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
     useState<CheckoutPaymentMethod>("cash");
   const [addressSaving, setAddressSaving] = useState(false);
@@ -236,6 +243,31 @@ export default function CustomerCheckoutPage() {
       `Pinned: ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`;
     await saveDeliveryAddress(nextAddress, location, "Map pin");
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeCart || !selectedCoordinates || addressSaving) {
+      setPricingPreview(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const estimate = await estimateCheckoutOrder({ cartId: activeCart.id });
+        if (cancelled) return;
+        setPricingPreview({
+          routeDistanceKm: estimate.routeDistanceKm,
+          deliveryFee: estimate.deliveryFee,
+          serviceCharge: estimate.serviceCharge,
+          totalAmount: estimate.totalAmount,
+        });
+      } catch {
+        if (!cancelled) setPricingPreview(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCart, selectedCoordinates, addressSaving]);
 
   if (!isReady) {
     return (
@@ -498,11 +530,37 @@ export default function CustomerCheckoutPage() {
                   {formatBirr(activeCartSummary?.subtotal ?? "0")}
                 </span>
               </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Distance</span>
+                <span className="font-medium text-gray-800">
+                  {pricingPreview?.routeDistanceKm
+                    ? `${Number(pricingPreview.routeDistanceKm).toFixed(2)} km`
+                    : "--"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Delivery fee</span>
+                <span className="font-medium text-gray-800">
+                  {pricingPreview
+                    ? formatBirr(pricingPreview.deliveryFee)
+                    : "--"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Service charge</span>
+                <span className="font-medium text-gray-800">
+                  {pricingPreview
+                    ? formatBirr(pricingPreview.serviceCharge)
+                    : formatBirr(50)}
+                </span>
+              </div>
               <div className="border-t border-orange-100 pt-3">
                 <div className="mb-4 flex items-center justify-between">
                   <span className="font-semibold text-gray-900">Total</span>
                   <span className="text-xl font-bold text-orange-500">
-                    {formatBirr(activeCartSummary?.subtotal ?? "0")}
+                    {pricingPreview
+                      ? formatBirr(pricingPreview.totalAmount)
+                      : formatBirr(activeCartSummary?.subtotal ?? "0")}
                   </span>
                 </div>
                 <div className="mb-4 space-y-2">

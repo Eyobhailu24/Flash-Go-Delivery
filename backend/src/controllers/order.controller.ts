@@ -28,6 +28,25 @@ const checkoutSchema = z.object({
   orderType: z.enum(["food", "package", "shop"]).optional(),
 });
 
+const checkoutEstimateSchema = z.object({
+  cartId: z.string().uuid(),
+});
+
+const packageCheckoutSchema = z.object({
+  paymentMethod: z.enum(["cash", "telebirr"]),
+  packageNote: z.string().trim().max(2000).optional(),
+  pickup: z.object({
+    address: z.string().trim().min(2).max(500),
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+  }),
+  dropoff: z.object({
+    address: z.string().trim().min(2).max(500),
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+  }),
+});
+
 const orderIdParamSchema = z.object({
   id: z.string().uuid(),
 });
@@ -41,6 +60,8 @@ function toMoneyNumber(value: string | null): number {
 function toMoneyString(value: number): string {
   return value.toFixed(2);
 }
+
+const DEFAULT_SERVICE_CHARGE = 50;
 
 function applyDiscountedUnitPrice(
   price: string | null,
@@ -92,6 +113,35 @@ function computeDeliveryFee(routeDistanceKm: number): number {
   return 50 + extraKm * 15;
 }
 
+function rankDriversByDistanceToPoint(
+  drivers: Array<{
+    id: string;
+    location: { lat?: number; lng?: number } | null;
+  }>,
+  origin: { lat: number; lng: number },
+): Array<{ driverId: string; distanceToBusinessKm: number }> {
+  return drivers
+    .map((driver) => {
+      const lat = driver.location?.lat;
+      const lng = driver.location?.lng;
+      if (typeof lat !== "number" || typeof lng !== "number") return null;
+      const distanceToBusinessKm = haversineDistanceKm({ lat, lng }, origin);
+      return {
+        driverId: driver.id,
+        distanceToBusinessKm,
+      };
+    })
+    .filter(
+      (
+        entry,
+      ): entry is {
+        driverId: string;
+        distanceToBusinessKm: number;
+      } => Boolean(entry),
+    )
+    .sort((a, b) => a.distanceToBusinessKm - b.distanceToBusinessKm);
+}
+
 function pickCustomerAddressCoordinates(
   addresses:
     | Array<{
@@ -121,53 +171,50 @@ function pickCustomerAddressCoordinates(
   };
 }
 
-export const checkoutOrder = async (c: Context<OrderEnv>) => {
-  const parsed = checkoutSchema.safeParse(await c.req.json());
-  if (!parsed.success) {
-    return c.json({ message: "Invalid request payload." }, 400);
-  }
-
-  const customerId = c.var.user.id;
-  const { cartId, paymentMethod, orderType = "food" } = parsed.data;
-
-  const cart = await db
+async function estimateCheckoutAmounts(input: {
+  customerId: string;
+  cartId: string;
+}): Promise<
+  | { ok: false; status: 400 | 404 | 409; message: string }
+  | {
+      ok: true;
+      cart: (typeof carts.$inferSelect) & { status: string };
+      subtotal: number;
+      businessCoords: { lat: number; lng: number };
+      routeDistanceKm: number;
+      deliveryFee: number;
+      serviceCharge: number;
+      totalAmount: number;
+    }
+> {
+  const { customerId, cartId } = input;
+  const cartRows = await db
     .select()
     .from(carts)
-    .where(
-      and(eq(carts.id, cartId), eq(carts.customerId, customerId)),
-    )
+    .where(and(eq(carts.id, cartId), eq(carts.customerId, customerId)))
     .limit(1);
-  const activeCart = cart[0];
-
+  const activeCart = cartRows[0];
   if (!activeCart) {
-    return c.json({ message: "Cart not found." }, 404);
+    return { ok: false, status: 404, message: "Cart not found." };
   }
-
   if (activeCart.status !== "active") {
-    return c.json(
-      { message: "Only active carts can be checked out." },
-      409,
-    );
+    return {
+      ok: false,
+      status: 409,
+      message: "Only active carts can be checked out.",
+    };
   }
 
   const items = await db
     .select({
-      id: cartItems.id,
-      categoryItemId: cartItems.categoryItemId,
-      quantity: cartItems.quantity,
       unitPrice: cartItems.unitPrice,
-      itemName: categoryItems.name,
+      quantity: cartItems.quantity,
     })
     .from(cartItems)
-    .leftJoin(
-      categoryItems,
-      eq(cartItems.categoryItemId, categoryItems.id),
-    )
     .where(eq(cartItems.cartId, activeCart.id));
   if (items.length === 0) {
-    return c.json({ message: "Your cart is empty." }, 400);
+    return { ok: false, status: 400, message: "Your cart is empty." };
   }
-
   const subtotal = items.reduce(
     (sum, item) => sum + toMoneyNumber(item.unitPrice) * item.quantity,
     0,
@@ -190,37 +237,79 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
       .where(eq(customerProfile.userId, customerId))
       .limit(1),
   ]);
-
   const businessCoords =
     typeof businessRow[0]?.latitude === "number" &&
     typeof businessRow[0]?.longitude === "number"
-      ? {
-          lat: businessRow[0].latitude,
-          lng: businessRow[0].longitude,
-        }
+      ? { lat: businessRow[0].latitude, lng: businessRow[0].longitude }
       : null;
   const customerCoords = pickCustomerAddressCoordinates(
     customerProfileRow[0]?.addresses,
   );
-
   if (!businessCoords) {
-    return c.json(
-      { message: "Business location coordinates are missing." },
-      400,
-    );
+    return {
+      ok: false,
+      status: 400,
+      message: "Business location coordinates are missing.",
+    };
   }
   if (!customerCoords) {
-    return c.json(
-      {
-        message:
-          "Customer default address with coordinates is required for checkout.",
-      },
-      400,
-    );
+    return {
+      ok: false,
+      status: 400,
+      message:
+        "Customer default address with coordinates is required for checkout.",
+    };
   }
 
   const routeDistanceKm = haversineDistanceKm(businessCoords, customerCoords);
   const deliveryFee = computeDeliveryFee(routeDistanceKm);
+  const serviceCharge = DEFAULT_SERVICE_CHARGE;
+  const totalAmount = subtotal + deliveryFee + serviceCharge;
+  return {
+    ok: true,
+    cart: activeCart,
+    subtotal,
+    businessCoords,
+    routeDistanceKm,
+    deliveryFee,
+    serviceCharge,
+    totalAmount,
+  };
+}
+
+export const checkoutOrder = async (c: Context<OrderEnv>) => {
+  const parsed = checkoutSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ message: "Invalid request payload." }, 400);
+  }
+
+  const customerId = c.var.user.id;
+  const { cartId, paymentMethod, orderType = "food" } = parsed.data;
+  const estimate = await estimateCheckoutAmounts({ customerId, cartId });
+  if (!estimate.ok) {
+    return c.json({ message: estimate.message }, estimate.status);
+  }
+  const activeCart = estimate.cart;
+  const subtotal = estimate.subtotal;
+  const businessCoords = estimate.businessCoords;
+  const routeDistanceKm = estimate.routeDistanceKm;
+  const deliveryFee = estimate.deliveryFee;
+  const serviceCharge = estimate.serviceCharge;
+
+  const items = await db
+    .select({
+      id: cartItems.id,
+      categoryItemId: cartItems.categoryItemId,
+      quantity: cartItems.quantity,
+      unitPrice: cartItems.unitPrice,
+      itemName: categoryItems.name,
+    })
+    .from(cartItems)
+    .leftJoin(
+      categoryItems,
+      eq(cartItems.categoryItemId, categoryItems.id),
+    )
+    .where(eq(cartItems.cartId, activeCart.id));
 
   const driverCandidates = await db
     .select({
@@ -238,29 +327,10 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
       ),
     );
 
-  const rankedDrivers = driverCandidates
-    .map((driver) => {
-      const lat = driver.location?.lat;
-      const lng = driver.location?.lng;
-      if (typeof lat !== "number" || typeof lng !== "number") return null;
-      const distanceToBusinessKm = haversineDistanceKm(
-        { lat, lng },
-        businessCoords,
-      );
-      return {
-        driverId: driver.id,
-        distanceToBusinessKm,
-      };
-    })
-    .filter(
-      (
-        entry,
-      ): entry is {
-        driverId: string;
-        distanceToBusinessKm: number;
-      } => Boolean(entry),
-    )
-    .sort((a, b) => a.distanceToBusinessKm - b.distanceToBusinessKm);
+  const rankedDrivers = rankDriversByDistanceToPoint(
+    driverCandidates,
+    businessCoords,
+  );
 
   const result = await db.transaction(async (tx) => {
     const createdOrders = await tx
@@ -273,6 +343,7 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
         status: "pending",
         totalPrice: toMoneyString(subtotal),
         deliveryFee: toMoneyString(deliveryFee),
+        serviceCharge: toMoneyString(serviceCharge),
         routeDistanceKm: toMoneyString(routeDistanceKm),
       })
       .returning();
@@ -294,7 +365,7 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
       .insert(payments)
       .values({
         orderId: createdOrder.id,
-        amount: toMoneyString(subtotal),
+        amount: toMoneyString(subtotal + deliveryFee + serviceCharge),
         method: paymentMethod,
         status: "pending",
       })
@@ -342,6 +413,135 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
   return c.json(result, 201);
 };
 
+export const estimateCheckoutOrder = async (c: Context<OrderEnv>) => {
+  const parsed = checkoutEstimateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ message: "Invalid request payload." }, 400);
+  }
+  const estimate = await estimateCheckoutAmounts({
+    customerId: c.var.user.id,
+    cartId: parsed.data.cartId,
+  });
+  if (!estimate.ok) {
+    return c.json({ message: estimate.message }, estimate.status);
+  }
+  return c.json({
+    subtotal: toMoneyString(estimate.subtotal),
+    routeDistanceKm: toMoneyString(estimate.routeDistanceKm),
+    deliveryFee: toMoneyString(estimate.deliveryFee),
+    serviceCharge: toMoneyString(estimate.serviceCharge),
+    totalAmount: toMoneyString(estimate.totalAmount),
+  });
+};
+
+export const createPackageOrder = async (c: Context<OrderEnv>) => {
+  const parsed = packageCheckoutSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ message: "Invalid request payload." }, 400);
+  }
+
+  const customerId = c.var.user.id;
+  const { paymentMethod, pickup, dropoff, packageNote } = parsed.data;
+  const routeDistanceKm = haversineDistanceKm(
+    { lat: pickup.lat, lng: pickup.lng },
+    { lat: dropoff.lat, lng: dropoff.lng },
+  );
+  const deliveryFee = computeDeliveryFee(routeDistanceKm);
+  const basePackagePrice = 100;
+  const serviceCharge = DEFAULT_SERVICE_CHARGE;
+  const payableAmount = basePackagePrice + deliveryFee + serviceCharge;
+
+  const driverCandidates = await db
+    .select({
+      id: users.id,
+      location: driverLocations.location,
+    })
+    .from(users)
+    .innerJoin(driverProfile, eq(driverProfile.userId, users.id))
+    .innerJoin(driverLocations, eq(driverLocations.driverId, users.id))
+    .where(
+      and(
+        eq(users.role, "driver"),
+        eq(users.status, "active"),
+        eq(driverProfile.isAvailable, true),
+      ),
+    );
+  const rankedDrivers = rankDriversByDistanceToPoint(driverCandidates, {
+    lat: pickup.lat,
+    lng: pickup.lng,
+  });
+
+  const result = await db.transaction(async (tx) => {
+    const createdOrders = await tx
+      .insert(orders)
+      .values({
+        customerId,
+        businessId: null,
+        driverId: null,
+        orderType: "package",
+        status: "pending",
+        totalPrice: toMoneyString(basePackagePrice),
+        deliveryFee: toMoneyString(deliveryFee),
+        serviceCharge: toMoneyString(serviceCharge),
+        routeDistanceKm: toMoneyString(routeDistanceKm),
+        packageNote: packageNote?.trim() ? packageNote.trim() : null,
+        pickupAddress: pickup.address,
+        pickupLat: pickup.lat.toFixed(7),
+        pickupLng: pickup.lng.toFixed(7),
+        dropoffAddress: dropoff.address,
+        dropoffLat: dropoff.lat.toFixed(7),
+        dropoffLng: dropoff.lng.toFixed(7),
+      })
+      .returning();
+    const createdOrder = createdOrders[0];
+
+    const createdPayments = await tx
+      .insert(payments)
+      .values({
+        orderId: createdOrder.id,
+        amount: toMoneyString(payableAmount),
+        method: paymentMethod,
+        status: "pending",
+      })
+      .returning();
+
+    if (rankedDrivers.length > 0) {
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 30_000);
+      await tx.insert(orderDriverOffers).values(
+        rankedDrivers.map((driver, index) => ({
+          orderId: createdOrder.id,
+          driverId: driver.driverId,
+          rank: index + 1,
+          status: index === 0 ? "pending" : "queued",
+          distanceToBusinessKm: driver.distanceToBusinessKm.toFixed(2),
+          offeredAt: index === 0 ? now : null,
+          expiresAt: index === 0 ? expiresAt : null,
+        })),
+      );
+
+      const firstDriver = rankedDrivers[0];
+      await tx.insert(notifications).values({
+        userId: firstDriver.driverId,
+        type: "order_incoming",
+        title: "Package delivery request",
+        message:
+          "A nearby package pickup request is waiting for your response.",
+      });
+    }
+
+    return {
+      order: createdOrder,
+      payment: createdPayments[0],
+      orderItemsCount: 0,
+      assignedDriverId: null,
+      offeredDriversCount: rankedDrivers.length,
+    };
+  });
+
+  return c.json(result, 201);
+};
+
 export const getMyOrders = async (c: Context<OrderEnv>) => {
   const rows = await db
     .select()
@@ -354,7 +554,11 @@ export const getMyOrders = async (c: Context<OrderEnv>) => {
 
   const orderIds = rows.map((row) => row.id);
   const businessIds = Array.from(
-    new Set(rows.map((row) => row.businessId)),
+    new Set(
+      rows
+        .map((row) => row.businessId)
+        .filter((businessId): businessId is string => Boolean(businessId)),
+    ),
   );
   const driverIds = Array.from(
     new Set(
@@ -370,14 +574,16 @@ export const getMyOrders = async (c: Context<OrderEnv>) => {
         .select()
         .from(payments)
         .where(inArray(payments.orderId, orderIds)),
-      db
-        .select({
-          userId: businessProfile.userId,
-          businessName: businessProfile.businessName,
-          address: businessProfile.address,
-        })
-        .from(businessProfile)
-        .where(inArray(businessProfile.userId, businessIds)),
+      businessIds.length === 0
+        ? Promise.resolve([])
+        : db
+            .select({
+              userId: businessProfile.userId,
+              businessName: businessProfile.businessName,
+              address: businessProfile.address,
+            })
+            .from(businessProfile)
+            .where(inArray(businessProfile.userId, businessIds)),
       driverIds.length === 0
         ? Promise.resolve([])
         : db
@@ -416,7 +622,9 @@ export const getMyOrders = async (c: Context<OrderEnv>) => {
 
   return c.json({
     orders: rows.map((order) => {
-      const business = businessByUserId.get(order.businessId);
+      const business = order.businessId
+        ? businessByUserId.get(order.businessId)
+        : null;
       const driver = order.driverId
         ? driverById.get(order.driverId)
         : null;
@@ -478,15 +686,17 @@ export const getMyOrderById = async (c: Context<OrderEnv>) => {
     .where(eq(payments.orderId, order.id))
     .limit(1);
   const [businessRows, driverRows, driverProfileRows] = await Promise.all([
-    db
-      .select({
-        userId: businessProfile.userId,
-        businessName: businessProfile.businessName,
-        address: businessProfile.address,
-      })
-      .from(businessProfile)
-      .where(eq(businessProfile.userId, order.businessId))
-      .limit(1),
+    order.businessId
+      ? db
+          .select({
+            userId: businessProfile.userId,
+            businessName: businessProfile.businessName,
+            address: businessProfile.address,
+          })
+          .from(businessProfile)
+          .where(eq(businessProfile.userId, order.businessId))
+          .limit(1)
+      : Promise.resolve([]),
     order.driverId
       ? db
           .select({
@@ -571,7 +781,13 @@ export const listAdminOrders = async (c: Context<OrderEnv>) => {
   }
 
   const orderIds = rows.map((row) => row.id);
-  const businessIds = Array.from(new Set(rows.map((row) => row.businessId)));
+  const businessIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.businessId)
+        .filter((businessId): businessId is string => Boolean(businessId)),
+    ),
+  );
   const driverIds = Array.from(
     new Set(
       rows
@@ -589,14 +805,16 @@ export const listAdminOrders = async (c: Context<OrderEnv>) => {
     customerRows,
   ] = await Promise.all([
     db.select().from(payments).where(inArray(payments.orderId, orderIds)),
-    db
-      .select({
-        userId: businessProfile.userId,
-        businessName: businessProfile.businessName,
-        address: businessProfile.address,
-      })
-      .from(businessProfile)
-      .where(inArray(businessProfile.userId, businessIds)),
+    businessIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            userId: businessProfile.userId,
+            businessName: businessProfile.businessName,
+            address: businessProfile.address,
+          })
+          .from(businessProfile)
+          .where(inArray(businessProfile.userId, businessIds)),
     driverIds.length === 0
       ? Promise.resolve([])
       : db
@@ -646,7 +864,9 @@ export const listAdminOrders = async (c: Context<OrderEnv>) => {
 
   return c.json({
     orders: rows.map((order) => {
-      const business = businessByUserId.get(order.businessId);
+      const business = order.businessId
+        ? businessByUserId.get(order.businessId)
+        : null;
       const driver = order.driverId
         ? driverById.get(order.driverId)
         : null;
@@ -714,15 +934,17 @@ export const getAdminOrderById = async (c: Context<OrderEnv>) => {
     .limit(1);
   const [businessRows, driverRows, driverProfileRows, customerRows] =
     await Promise.all([
-      db
-        .select({
-          userId: businessProfile.userId,
-          businessName: businessProfile.businessName,
-          address: businessProfile.address,
-        })
-        .from(businessProfile)
-        .where(eq(businessProfile.userId, order.businessId))
-        .limit(1),
+      order.businessId
+        ? db
+            .select({
+              userId: businessProfile.userId,
+              businessName: businessProfile.businessName,
+              address: businessProfile.address,
+            })
+            .from(businessProfile)
+            .where(eq(businessProfile.userId, order.businessId))
+            .limit(1)
+        : Promise.resolve([]),
       order.driverId
         ? db
             .select({
@@ -838,6 +1060,12 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
       409,
     );
   }
+  if (parsed.data.items !== undefined && !existing.businessId) {
+    return c.json(
+      { message: "Package orders do not support editable catalog line items." },
+      409,
+    );
+  }
 
   if (parsed.data.driverId !== undefined) {
     if (existing.status === "delivered") {
@@ -899,6 +1127,10 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
       }
 
       if (parsed.data.items !== undefined) {
+        if (!order.businessId) {
+          throw new Error("items_not_supported");
+        }
+        const orderBusinessId = order.businessId;
         const merged = mergeOrderLineInputs(parsed.data.items);
         const categoryIds = merged.map((m) => m.categoryItemId);
         const catalogRows =
@@ -921,7 +1153,7 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
                 .where(
                   and(
                     inArray(categoryItems.id, categoryIds),
-                    eq(productCategories.businessId, order.businessId),
+                    eq(productCategories.businessId, orderBusinessId),
                   ),
                 );
 
@@ -970,9 +1202,13 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
           .where(eq(payments.orderId, orderId))
           .limit(1);
         if (pay && pay.status === "pending") {
+          const deliveryFee = toMoneyNumber(order.deliveryFee);
+          const serviceCharge = toMoneyNumber(order.serviceCharge);
           await tx
             .update(payments)
-            .set({ amount: toMoneyString(subtotal) })
+            .set({
+              amount: toMoneyString(subtotal + deliveryFee + serviceCharge),
+            })
             .where(eq(payments.paymentId, pay.paymentId));
         }
       }
@@ -1059,6 +1295,12 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
           409,
         );
       }
+      if (err.message === "items_not_supported") {
+        return c.json(
+          { message: "Package orders do not support editable catalog line items." },
+          409,
+        );
+      }
     }
     throw err;
   }
@@ -1079,15 +1321,17 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
     .limit(1);
   const [businessRows, driverRows, driverProfileRows, customerRows] =
     await Promise.all([
-      db
-        .select({
-          userId: businessProfile.userId,
-          businessName: businessProfile.businessName,
-          address: businessProfile.address,
-        })
-        .from(businessProfile)
-        .where(eq(businessProfile.userId, refreshed[0]!.businessId))
-        .limit(1),
+      refreshed[0]!.businessId
+        ? db
+            .select({
+              userId: businessProfile.userId,
+              businessName: businessProfile.businessName,
+              address: businessProfile.address,
+            })
+            .from(businessProfile)
+            .where(eq(businessProfile.userId, refreshed[0]!.businessId))
+            .limit(1)
+        : Promise.resolve([]),
       refreshed[0]!.driverId
         ? db
             .select({

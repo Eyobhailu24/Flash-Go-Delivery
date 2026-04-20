@@ -236,16 +236,38 @@ export default function CustomerTrackOrderDetailPage() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-xl border border-orange-100 bg-white p-3">
-                  <p className="text-xs font-semibold text-gray-500">Business</p>
+                  <p className="text-xs font-semibold text-gray-500">
+                    {selectedOrder.order.orderType === "package"
+                      ? "Pickup"
+                      : "Business"}
+                  </p>
                   <p className="mt-1 font-semibold text-gray-800">
-                    {selectedOrder.business?.name ?? "Unknown business"}
+                    {selectedOrder.order.orderType === "package"
+                      ? "Package pickup point"
+                      : (selectedOrder.business?.name ?? "Unknown business")}
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
-                    {selectedOrder.business?.address ?? "Address not provided"}
+                    {selectedOrder.order.orderType === "package"
+                      ? (selectedOrder.order.pickupAddress ?? "Pickup address not provided")
+                      : (selectedOrder.business?.address ?? "Address not provided")}
                   </p>
                 </div>
                 <div className="rounded-xl border border-orange-100 bg-white p-3">
-                  <p className="text-xs font-semibold text-gray-500">Driver</p>
+                  <p className="text-xs font-semibold text-gray-500">
+                    {selectedOrder.order.orderType === "package"
+                      ? "Dropoff"
+                      : "Driver"}
+                  </p>
+                  {selectedOrder.order.orderType === "package" ? (
+                    <>
+                      <p className="mt-1 font-semibold text-gray-800">
+                        Package destination
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {selectedOrder.order.dropoffAddress ?? "Dropoff address not provided"}
+                      </p>
+                    </>
+                  ) : null}
                   {selectedOrder.driver ? (
                     <>
                       <p className="mt-1 font-semibold text-gray-800">
@@ -255,7 +277,7 @@ export default function CustomerTrackOrderDetailPage() {
                         {selectedOrder.driver.phoneNumber ?? "Phone unavailable"}
                       </p>
                     </>
-                  ) : (
+                  ) : selectedOrder.order.orderType === "package" ? null : (
                     <p className="mt-1 text-sm text-gray-500">
                       Waiting for driver assignment.
                     </p>
@@ -295,31 +317,43 @@ export default function CustomerTrackOrderDetailPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-orange-100 p-3">
-                <p className="mb-2 text-sm font-semibold text-gray-800">
-                  Items ({selectedOrder.items.length})
-                </p>
-                <div className="space-y-2">
-                  {selectedOrder.items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between rounded-lg bg-orange-50 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-800">
-                          {item.productName}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {formatBirr(item.unitPrice)} x {item.quantity}
+              {selectedOrder.order.orderType === "package" ? (
+                <div className="rounded-xl border border-orange-100 p-3">
+                  <p className="mb-2 text-sm font-semibold text-gray-800">
+                    Package note
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {selectedOrder.order.packageNote?.trim() ||
+                      "No package note was provided."}
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-orange-100 p-3">
+                  <p className="mb-2 text-sm font-semibold text-gray-800">
+                    Items ({selectedOrder.items.length})
+                  </p>
+                  <div className="space-y-2">
+                    {selectedOrder.items.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between rounded-lg bg-orange-50 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-800">
+                            {item.productName}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatBirr(item.unitPrice)} x {item.quantity}
+                          </p>
+                        </div>
+                        <p className="text-sm font-semibold text-orange-600">
+                          {formatBirr(item.lineTotal)}
                         </p>
                       </div>
-                      <p className="text-sm font-semibold text-orange-600">
-                        {formatBirr(item.lineTotal)}
-                      </p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="rounded-xl border border-orange-100 bg-white p-3">
                 <div className="flex items-center justify-between text-sm">
@@ -334,12 +368,19 @@ export default function CustomerTrackOrderDetailPage() {
                     {formatBirr(selectedOrder.order.deliveryFee)}
                   </p>
                 </div>
+                <div className="mt-2 flex items-center justify-between text-sm">
+                  <p className="text-gray-500">Service charge</p>
+                  <p className="font-medium text-gray-800">
+                    {formatBirr(selectedOrder.order.serviceCharge)}
+                  </p>
+                </div>
                 <div className="mt-3 flex items-center justify-between border-t border-orange-100 pt-3">
                   <p className="font-semibold text-gray-900">Total</p>
                   <p className="text-lg font-bold text-orange-500">
                     {formatBirr(
                       Number(selectedOrder.order.totalPrice) +
-                        Number(selectedOrder.order.deliveryFee),
+                        Number(selectedOrder.order.deliveryFee) +
+                        Number(selectedOrder.order.serviceCharge),
                     )}
                   </p>
                 </div>

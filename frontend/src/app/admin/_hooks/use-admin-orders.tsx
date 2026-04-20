@@ -19,12 +19,14 @@ export type OrderCore = {
   id: string;
   customerId: string;
   driverId: string | null;
-  businessId: string;
+  businessId: string | null;
   orderType: string;
   status: OrderStatus;
   totalPrice: string;
   deliveryFee: string;
+  serviceCharge: string;
   routeDistanceKm: string | null;
+  packageNote: string | null;
   createdAt: string;
 };
 

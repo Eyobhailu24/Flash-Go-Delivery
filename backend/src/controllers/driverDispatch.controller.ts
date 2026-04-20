@@ -177,15 +177,17 @@ export const getCurrentDriverOffer = async (c: Context<DriverEnv>) => {
   }
 
   const [businessRows, customerRows, itemRows] = await Promise.all([
-    db
-      .select({
-        userId: businessProfile.userId,
-        businessName: businessProfile.businessName,
-        address: businessProfile.address,
-      })
-      .from(businessProfile)
-      .where(eq(businessProfile.userId, order.businessId))
-      .limit(1),
+    order.businessId
+      ? db
+          .select({
+            userId: businessProfile.userId,
+            businessName: businessProfile.businessName,
+            address: businessProfile.address,
+          })
+          .from(businessProfile)
+          .where(eq(businessProfile.userId, order.businessId))
+          .limit(1)
+      : Promise.resolve([]),
     db
       .select({
         userId: customerProfile.userId,
@@ -209,6 +211,10 @@ export const getCurrentDriverOffer = async (c: Context<DriverEnv>) => {
     customer?.addresses?.find((entry) => entry.isDefault)?.address ??
     customer?.addresses?.[0]?.address ??
     "Customer address";
+  const customerAddress =
+    order.orderType === "package"
+      ? (order.dropoffAddress ?? defaultCustomerAddress)
+      : defaultCustomerAddress;
 
   return c.json({
     offer: {
@@ -231,8 +237,13 @@ export const getCurrentDriverOffer = async (c: Context<DriverEnv>) => {
           }
         : null,
       customer: {
-        address: defaultCustomerAddress,
+        address: customerAddress,
       },
+      pickup: order.pickupAddress
+        ? {
+            address: order.pickupAddress,
+          }
+        : null,
       items: itemRows,
     },
   });
@@ -381,15 +392,17 @@ export const getCurrentAssignedOrder = async (c: Context<DriverEnv>) => {
   }
 
   const [businessRows, customerRows, itemRows] = await Promise.all([
-    db
-      .select({
-        userId: businessProfile.userId,
-        businessName: businessProfile.businessName,
-        address: businessProfile.address,
-      })
-      .from(businessProfile)
-      .where(eq(businessProfile.userId, order.businessId))
-      .limit(1),
+    order.businessId
+      ? db
+          .select({
+            userId: businessProfile.userId,
+            businessName: businessProfile.businessName,
+            address: businessProfile.address,
+          })
+          .from(businessProfile)
+          .where(eq(businessProfile.userId, order.businessId))
+          .limit(1)
+      : Promise.resolve([]),
     db
       .select({
         userId: customerProfile.userId,
@@ -414,6 +427,10 @@ export const getCurrentAssignedOrder = async (c: Context<DriverEnv>) => {
     customer?.addresses?.find((entry) => entry.isDefault)?.address ??
     customer?.addresses?.[0]?.address ??
     "Customer address";
+  const customerAddress =
+    order.orderType === "package"
+      ? (order.dropoffAddress ?? defaultCustomerAddress)
+      : defaultCustomerAddress;
 
   return c.json({
     order: {
@@ -430,8 +447,13 @@ export const getCurrentAssignedOrder = async (c: Context<DriverEnv>) => {
           }
         : null,
       customer: {
-        address: defaultCustomerAddress,
+        address: customerAddress,
       },
+      pickup: order.pickupAddress
+        ? {
+            address: order.pickupAddress,
+          }
+        : null,
       items: itemRows,
     },
   });

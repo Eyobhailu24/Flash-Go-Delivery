@@ -135,6 +135,13 @@ export function CustomerTopNavbar({
         <Button
           asChild
           variant="outline"
+          className="hidden h-11 rounded-xl border-orange-200 bg-orange-50 px-4 text-orange-700 shadow-sm transition-all hover:scale-[1.02] hover:bg-orange-100 md:inline-flex"
+        >
+          <Link href="/deliver-packages">Deliver Packages</Link>
+        </Button>
+        <Button
+          asChild
+          variant="outline"
           className="hidden h-11 rounded-xl border-0 bg-orange-500 px-4 text-white shadow-sm transition-all hover:scale-[1.02] hover:bg-orange-400 md:inline-flex"
         >
           <Link href="/track-order">Track Order</Link>

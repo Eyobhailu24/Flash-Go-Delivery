@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import {
   checkoutOrder,
+  createPackageOrder,
+  estimateCheckoutOrder,
   getAdminOrderById,
   getMyOrderById,
   getMyOrders,
@@ -27,6 +29,8 @@ adminOrders.get("/:id", getAdminOrderById);
 adminOrders.patch("/:id", patchAdminOrder);
 
 orderRoutes.post("/checkout", checkoutOrder);
+orderRoutes.post("/checkout/estimate", estimateCheckoutOrder);
+orderRoutes.post("/package", createPackageOrder);
 orderRoutes.get("/my", getMyOrders);
 orderRoutes.route("/admin", adminOrders);
 orderRoutes.get("/:id", getMyOrderById);
