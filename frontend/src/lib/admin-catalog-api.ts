@@ -252,7 +252,13 @@ type CategoryItemsListResponse = {
 };
 
 export async function fetchCategoryItems(
-  params: { categoryId?: string; limit?: number; offset?: number } = {},
+  params: {
+    categoryId?: string;
+    businessId?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
 ): Promise<CategoryItemsListResponse> {
   const limit = params.limit ?? 100;
   const offset = params.offset ?? 0;
@@ -262,6 +268,12 @@ export async function fetchCategoryItems(
   });
   if (params.categoryId?.trim()) {
     q.set("categoryId", params.categoryId.trim());
+  }
+  if (params.businessId?.trim()) {
+    q.set("businessId", params.businessId.trim());
+  }
+  if (params.q?.trim()) {
+    q.set("q", params.q.trim());
   }
   const res = await authFetch(`/catalog/category-items?${q.toString()}`);
   return readAuthJson<CategoryItemsListResponse>(res);

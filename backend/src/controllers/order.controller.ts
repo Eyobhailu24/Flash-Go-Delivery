@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import type { Context } from "hono";
 import { z } from "zod";
 import { db } from "../db.js";
@@ -16,6 +16,7 @@ import {
   orderItems,
   orders,
   payments,
+  productCategories,
   users,
 } from "../schema.js";
 
@@ -39,6 +40,31 @@ function toMoneyNumber(value: string | null): number {
 
 function toMoneyString(value: number): string {
   return value.toFixed(2);
+}
+
+function applyDiscountedUnitPrice(
+  price: string | null,
+  discount: string | null,
+): string {
+  const priceNum = toMoneyNumber(price ?? "0");
+  const discountNum = toMoneyNumber(discount ?? null);
+  return toMoneyString(Math.max(priceNum - discountNum, 0));
+}
+
+function mergeOrderLineInputs(
+  items: Array<{ categoryItemId: string; quantity: number }>,
+): Array<{ categoryItemId: string; quantity: number }> {
+  const map = new Map<string, number>();
+  for (const row of items) {
+    map.set(
+      row.categoryItemId,
+      (map.get(row.categoryItemId) ?? 0) + row.quantity,
+    );
+  }
+  return [...map.entries()].map(([categoryItemId, quantity]) => ({
+    categoryItemId,
+    quantity,
+  }));
 }
 
 function toRad(deg: number): number {
@@ -177,55 +203,64 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
     customerProfileRow[0]?.addresses,
   );
 
-  const routeDistanceKm =
-    businessCoords && customerCoords
-      ? haversineDistanceKm(businessCoords, customerCoords)
-      : 0;
+  if (!businessCoords) {
+    return c.json(
+      { message: "Business location coordinates are missing." },
+      400,
+    );
+  }
+  if (!customerCoords) {
+    return c.json(
+      {
+        message:
+          "Customer default address with coordinates is required for checkout.",
+      },
+      400,
+    );
+  }
+
+  const routeDistanceKm = haversineDistanceKm(businessCoords, customerCoords);
   const deliveryFee = computeDeliveryFee(routeDistanceKm);
 
-  const driverCandidates = businessCoords
-    ? await db
-        .select({
-          id: users.id,
-          location: driverLocations.location,
-        })
-        .from(users)
-        .innerJoin(driverProfile, eq(driverProfile.userId, users.id))
-        .innerJoin(driverLocations, eq(driverLocations.driverId, users.id))
-        .where(
-          and(
-            eq(users.role, "driver"),
-            eq(users.status, "active"),
-            eq(driverProfile.isAvailable, true),
-          ),
-        )
-    : [];
+  const driverCandidates = await db
+    .select({
+      id: users.id,
+      location: driverLocations.location,
+    })
+    .from(users)
+    .innerJoin(driverProfile, eq(driverProfile.userId, users.id))
+    .innerJoin(driverLocations, eq(driverLocations.driverId, users.id))
+    .where(
+      and(
+        eq(users.role, "driver"),
+        eq(users.status, "active"),
+        eq(driverProfile.isAvailable, true),
+      ),
+    );
 
-  const rankedDrivers = businessCoords
-    ? driverCandidates
-        .map((driver) => {
-          const lat = driver.location?.lat;
-          const lng = driver.location?.lng;
-          if (typeof lat !== "number" || typeof lng !== "number") return null;
-          const distanceToBusinessKm = haversineDistanceKm(
-            { lat, lng },
-            businessCoords,
-          );
-          return {
-            driverId: driver.id,
-            distanceToBusinessKm,
-          };
-        })
-        .filter(
-          (
-            entry,
-          ): entry is {
-            driverId: string;
-            distanceToBusinessKm: number;
-          } => Boolean(entry),
-        )
-        .sort((a, b) => a.distanceToBusinessKm - b.distanceToBusinessKm)
-    : [];
+  const rankedDrivers = driverCandidates
+    .map((driver) => {
+      const lat = driver.location?.lat;
+      const lng = driver.location?.lng;
+      if (typeof lat !== "number" || typeof lng !== "number") return null;
+      const distanceToBusinessKm = haversineDistanceKm(
+        { lat, lng },
+        businessCoords,
+      );
+      return {
+        driverId: driver.id,
+        distanceToBusinessKm,
+      };
+    })
+    .filter(
+      (
+        entry,
+      ): entry is {
+        driverId: string;
+        distanceToBusinessKm: number;
+      } => Boolean(entry),
+    )
+    .sort((a, b) => a.distanceToBusinessKm - b.distanceToBusinessKm);
 
   const result = await db.transaction(async (tx) => {
     const createdOrders = await tx
@@ -489,6 +524,625 @@ export const getMyOrderById = async (c: Context<OrderEnv>) => {
       ? {
           name: business.businessName,
           address: business.address,
+        }
+      : null,
+    driver: driver
+      ? {
+          id: driver.id,
+          fullName: driver.fullName,
+          phoneNumber: driver.phoneNumber,
+          isAvailable: driverExtra?.isAvailable ?? null,
+          rating: driverExtra?.rating ?? null,
+          vehicleType: driverExtra?.vehicleType ?? null,
+        }
+      : null,
+  });
+};
+
+const adminOrderLineSchema = z.object({
+  categoryItemId: z.string().uuid(),
+  quantity: z.coerce.number().int().positive(),
+});
+
+const adminPatchOrderSchema = z
+  .object({
+    items: z.array(adminOrderLineSchema).min(1).optional(),
+    driverId: z.union([z.string().uuid(), z.null()]).optional(),
+  })
+  .refine((body) => body.items !== undefined || body.driverId !== undefined, {
+    message: "At least one of items or driverId is required.",
+  });
+
+export const listAdminOrders = async (c: Context<OrderEnv>) => {
+  const limitRaw = c.req.query("limit");
+  const offsetRaw = c.req.query("offset");
+  const limit = Math.min(Math.max(Number(limitRaw ?? 50) || 50, 1), 200);
+  const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
+
+  const rows = await db
+    .select()
+    .from(orders)
+    .orderBy(desc(orders.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  if (rows.length === 0) {
+    return c.json({ orders: [], limit, offset });
+  }
+
+  const orderIds = rows.map((row) => row.id);
+  const businessIds = Array.from(new Set(rows.map((row) => row.businessId)));
+  const driverIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.driverId)
+        .filter((driverId): driverId is string => Boolean(driverId)),
+    ),
+  );
+  const customerIds = Array.from(new Set(rows.map((row) => row.customerId)));
+
+  const [
+    paymentRows,
+    businessRows,
+    driverUserRows,
+    driverProfileRows,
+    customerRows,
+  ] = await Promise.all([
+    db.select().from(payments).where(inArray(payments.orderId, orderIds)),
+    db
+      .select({
+        userId: businessProfile.userId,
+        businessName: businessProfile.businessName,
+        address: businessProfile.address,
+      })
+      .from(businessProfile)
+      .where(inArray(businessProfile.userId, businessIds)),
+    driverIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: users.id,
+            fullName: users.fullName,
+            phoneNumber: users.phoneNumber,
+          })
+          .from(users)
+          .where(inArray(users.id, driverIds)),
+    driverIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            userId: driverProfile.userId,
+            isAvailable: driverProfile.isAvailable,
+            rating: driverProfile.rating,
+            vehicleType: driverProfile.vehicleType,
+          })
+          .from(driverProfile)
+          .where(inArray(driverProfile.userId, driverIds)),
+    db
+      .select({
+        id: users.id,
+        fullName: users.fullName,
+        phoneNumber: users.phoneNumber,
+      })
+      .from(users)
+      .where(inArray(users.id, customerIds)),
+  ]);
+
+  const paymentByOrderId = new Map(
+    paymentRows.map((payment) => [payment.orderId, payment]),
+  );
+  const businessByUserId = new Map(
+    businessRows.map((business) => [business.userId, business]),
+  );
+  const driverById = new Map(
+    driverUserRows.map((driver) => [driver.id, driver]),
+  );
+  const driverProfileById = new Map(
+    driverProfileRows.map((profile) => [profile.userId, profile]),
+  );
+  const customerById = new Map(
+    customerRows.map((customer) => [customer.id, customer]),
+  );
+
+  return c.json({
+    orders: rows.map((order) => {
+      const business = businessByUserId.get(order.businessId);
+      const driver = order.driverId
+        ? driverById.get(order.driverId)
+        : null;
+      const driverExtra = order.driverId
+        ? driverProfileById.get(order.driverId)
+        : null;
+      const customer = customerById.get(order.customerId);
+      return {
+        ...order,
+        payment: paymentByOrderId.get(order.id) ?? null,
+        business: business
+          ? {
+              name: business.businessName,
+              address: business.address,
+            }
+          : null,
+        customer: customer
+          ? {
+              id: customer.id,
+              fullName: customer.fullName,
+              phoneNumber: customer.phoneNumber,
+            }
+          : null,
+        driver: driver
+          ? {
+              id: driver.id,
+              fullName: driver.fullName,
+              phoneNumber: driver.phoneNumber,
+              isAvailable: driverExtra?.isAvailable ?? null,
+              rating: driverExtra?.rating ?? null,
+              vehicleType: driverExtra?.vehicleType ?? null,
+            }
+          : null,
+      };
+    }),
+    limit,
+    offset,
+  });
+};
+
+export const getAdminOrderById = async (c: Context<OrderEnv>) => {
+  const params = orderIdParamSchema.safeParse(c.req.param());
+  if (!params.success) {
+    return c.json({ message: "Invalid order id." }, 400);
+  }
+
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, params.data.id))
+    .limit(1);
+  const order = rows[0];
+  if (!order) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+
+  const relatedItems = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.orderId, order.id));
+  const paymentRows = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.orderId, order.id))
+    .limit(1);
+  const [businessRows, driverRows, driverProfileRows, customerRows] =
+    await Promise.all([
+      db
+        .select({
+          userId: businessProfile.userId,
+          businessName: businessProfile.businessName,
+          address: businessProfile.address,
+        })
+        .from(businessProfile)
+        .where(eq(businessProfile.userId, order.businessId))
+        .limit(1),
+      order.driverId
+        ? db
+            .select({
+              id: users.id,
+              fullName: users.fullName,
+              phoneNumber: users.phoneNumber,
+            })
+            .from(users)
+            .where(eq(users.id, order.driverId))
+            .limit(1)
+        : Promise.resolve([]),
+      order.driverId
+        ? db
+            .select({
+              userId: driverProfile.userId,
+              isAvailable: driverProfile.isAvailable,
+              rating: driverProfile.rating,
+              vehicleType: driverProfile.vehicleType,
+            })
+            .from(driverProfile)
+            .where(eq(driverProfile.userId, order.driverId))
+            .limit(1)
+        : Promise.resolve([]),
+      db
+        .select({
+          id: users.id,
+          fullName: users.fullName,
+          phoneNumber: users.phoneNumber,
+        })
+        .from(users)
+        .where(eq(users.id, order.customerId))
+        .limit(1),
+    ]);
+
+  const business = businessRows[0] ?? null;
+  const driver = driverRows[0] ?? null;
+  const driverExtra = driverProfileRows[0] ?? null;
+  const customer = customerRows[0] ?? null;
+
+  return c.json({
+    order,
+    items: relatedItems,
+    payment: paymentRows[0] ?? null,
+    business: business
+      ? {
+          name: business.businessName,
+          address: business.address,
+        }
+      : null,
+    customer: customer
+      ? {
+          id: customer.id,
+          fullName: customer.fullName,
+          phoneNumber: customer.phoneNumber,
+        }
+      : null,
+    driver: driver
+      ? {
+          id: driver.id,
+          fullName: driver.fullName,
+          phoneNumber: driver.phoneNumber,
+          isAvailable: driverExtra?.isAvailable ?? null,
+          rating: driverExtra?.rating ?? null,
+          vehicleType: driverExtra?.vehicleType ?? null,
+        }
+      : null,
+  });
+};
+
+export const patchAdminOrder = async (c: Context<OrderEnv>) => {
+  const params = orderIdParamSchema.safeParse(c.req.param());
+  if (!params.success) {
+    return c.json({ message: "Invalid order id." }, 400);
+  }
+
+  const parsed = adminPatchOrderSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json(
+      { message: "Invalid request payload.", issues: parsed.error.flatten() },
+      400,
+    );
+  }
+
+  const orderId = params.data.id;
+  const now = new Date();
+
+  const orderRows = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+  const existing = orderRows[0];
+  if (!existing) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+  if (existing.status === "cancelled") {
+    return c.json({ message: "Cannot modify a cancelled order." }, 409);
+  }
+
+  const initialPaymentRows = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.orderId, orderId))
+    .limit(1);
+  const payment = initialPaymentRows[0] ?? null;
+
+  if (parsed.data.items !== undefined && payment && payment.status !== "pending") {
+    return c.json(
+      {
+        message:
+          "Line items can only be edited while the payment is still pending.",
+      },
+      409,
+    );
+  }
+
+  if (parsed.data.driverId !== undefined) {
+    if (existing.status === "delivered") {
+      return c.json(
+        { message: "Driver cannot be changed for this order status." },
+        409,
+      );
+    }
+    if (existing.status === "in_transit" && parsed.data.driverId !== null) {
+      if (parsed.data.driverId !== existing.driverId) {
+        return c.json(
+          { message: "Cannot reassign driver while the order is in transit." },
+          409,
+        );
+      }
+    }
+    if (parsed.data.driverId === null && existing.status === "in_transit") {
+      return c.json(
+        { message: "Cannot unassign driver while the order is in transit." },
+        409,
+      );
+    }
+  }
+
+  const newDriverId =
+    parsed.data.driverId === undefined ? undefined : parsed.data.driverId;
+
+  if (newDriverId !== undefined && newDriverId !== null) {
+    const [driverUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, newDriverId))
+      .limit(1);
+    if (!driverUser || driverUser.role !== "driver") {
+      return c.json({ message: "Invalid driver user." }, 400);
+    }
+    if (driverUser.status !== "active") {
+      return c.json({ message: "Driver account is not active." }, 400);
+    }
+    const [dp] = await db
+      .select()
+      .from(driverProfile)
+      .where(eq(driverProfile.userId, newDriverId))
+      .limit(1);
+    if (!dp) {
+      return c.json({ message: "Driver profile not found." }, 400);
+    }
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .limit(1);
+      if (!order) {
+        throw new Error("missing_order");
+      }
+
+      if (parsed.data.items !== undefined) {
+        const merged = mergeOrderLineInputs(parsed.data.items);
+        const categoryIds = merged.map((m) => m.categoryItemId);
+        const catalogRows =
+          categoryIds.length === 0
+            ? []
+            : await tx
+                .select({
+                  id: categoryItems.id,
+                  name: categoryItems.name,
+                  price: categoryItems.price,
+                  discount: categoryItems.discount,
+                  isAvailable: categoryItems.isAvailable,
+                  businessId: productCategories.businessId,
+                })
+                .from(categoryItems)
+                .innerJoin(
+                  productCategories,
+                  eq(categoryItems.categoryId, productCategories.id),
+                )
+                .where(
+                  and(
+                    inArray(categoryItems.id, categoryIds),
+                    eq(productCategories.businessId, order.businessId),
+                  ),
+                );
+
+        if (catalogRows.length !== new Set(categoryIds).size) {
+          throw new Error("invalid_items");
+        }
+        for (const row of catalogRows) {
+          if (!row.isAvailable) {
+            throw new Error("unavailable_item");
+          }
+        }
+
+        await tx.delete(orderItems).where(eq(orderItems.orderId, orderId));
+
+        const values = merged.map((line) => {
+          const cat = catalogRows.find((r) => r.id === line.categoryItemId)!;
+          const unitPrice = applyDiscountedUnitPrice(cat.price, cat.discount);
+          const lineTotal = toMoneyString(
+            toMoneyNumber(unitPrice) * line.quantity,
+          );
+          return {
+            orderId,
+            categoryItemId: line.categoryItemId,
+            productName: cat.name,
+            unitPrice,
+            quantity: line.quantity,
+            lineTotal,
+          };
+        });
+        if (values.length > 0) {
+          await tx.insert(orderItems).values(values);
+        }
+
+        const subtotal = values.reduce(
+          (sum, v) => sum + toMoneyNumber(v.unitPrice) * v.quantity,
+          0,
+        );
+        await tx
+          .update(orders)
+          .set({ totalPrice: toMoneyString(subtotal) })
+          .where(eq(orders.id, orderId));
+
+        const [pay] = await tx
+          .select()
+          .from(payments)
+          .where(eq(payments.orderId, orderId))
+          .limit(1);
+        if (pay && pay.status === "pending") {
+          await tx
+            .update(payments)
+            .set({ amount: toMoneyString(subtotal) })
+            .where(eq(payments.paymentId, pay.paymentId));
+        }
+      }
+
+      if (newDriverId !== undefined) {
+        const [fresh] = await tx
+          .select()
+          .from(orders)
+          .where(eq(orders.id, orderId))
+          .limit(1);
+        if (!fresh) {
+          throw new Error("missing_order");
+        }
+        const prevDriverId = fresh.driverId;
+
+        if (newDriverId !== prevDriverId) {
+          await tx
+            .update(orderDriverOffers)
+            .set({
+              status: "cancelled",
+              respondedAt: now,
+            })
+            .where(
+              and(
+                eq(orderDriverOffers.orderId, orderId),
+                or(
+                  eq(orderDriverOffers.status, "pending"),
+                  eq(orderDriverOffers.status, "queued"),
+                ),
+              ),
+            );
+
+          if (prevDriverId) {
+            await tx
+              .update(driverProfile)
+              .set({ isAvailable: true })
+              .where(eq(driverProfile.userId, prevDriverId));
+          }
+
+          if (newDriverId === null) {
+            await tx
+              .update(orders)
+              .set({
+                driverId: null,
+                status:
+                  fresh.status === "accepted" ? "pending" : fresh.status,
+              })
+              .where(eq(orders.id, orderId));
+          } else {
+            const nextStatus =
+              fresh.status === "pending" ? "accepted" : fresh.status;
+            await tx
+              .update(orders)
+              .set({ driverId: newDriverId, status: nextStatus })
+              .where(eq(orders.id, orderId));
+
+            await tx
+              .update(driverProfile)
+              .set({ isAvailable: false })
+              .where(eq(driverProfile.userId, newDriverId));
+
+            await tx.insert(notifications).values({
+              userId: newDriverId,
+              type: "order_assigned",
+              title: "Order assigned",
+              message:
+                "An order has been assigned to you by support. Open the driver app to continue.",
+            });
+          }
+        }
+      }
+    });
+  } catch (err) {
+    if (err instanceof Error) {
+      if (err.message === "invalid_items") {
+        return c.json(
+          { message: "One or more items are invalid for this business." },
+          400,
+        );
+      }
+      if (err.message === "unavailable_item") {
+        return c.json(
+          { message: "One or more catalog items are not available." },
+          409,
+        );
+      }
+    }
+    throw err;
+  }
+
+  const refreshed = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+  const relatedItems = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
+  const finalPaymentRows = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.orderId, orderId))
+    .limit(1);
+  const [businessRows, driverRows, driverProfileRows, customerRows] =
+    await Promise.all([
+      db
+        .select({
+          userId: businessProfile.userId,
+          businessName: businessProfile.businessName,
+          address: businessProfile.address,
+        })
+        .from(businessProfile)
+        .where(eq(businessProfile.userId, refreshed[0]!.businessId))
+        .limit(1),
+      refreshed[0]!.driverId
+        ? db
+            .select({
+              id: users.id,
+              fullName: users.fullName,
+              phoneNumber: users.phoneNumber,
+            })
+            .from(users)
+            .where(eq(users.id, refreshed[0]!.driverId!))
+            .limit(1)
+        : Promise.resolve([]),
+      refreshed[0]!.driverId
+        ? db
+            .select({
+              userId: driverProfile.userId,
+              isAvailable: driverProfile.isAvailable,
+              rating: driverProfile.rating,
+              vehicleType: driverProfile.vehicleType,
+            })
+            .from(driverProfile)
+            .where(eq(driverProfile.userId, refreshed[0]!.driverId!))
+            .limit(1)
+        : Promise.resolve([]),
+      db
+        .select({
+          id: users.id,
+          fullName: users.fullName,
+          phoneNumber: users.phoneNumber,
+        })
+        .from(users)
+        .where(eq(users.id, refreshed[0]!.customerId))
+        .limit(1),
+    ]);
+
+  const order = refreshed[0]!;
+  const business = businessRows[0] ?? null;
+  const driver = driverRows[0] ?? null;
+  const driverExtra = driverProfileRows[0] ?? null;
+  const customer = customerRows[0] ?? null;
+
+  return c.json({
+    order,
+    items: relatedItems,
+    payment: finalPaymentRows[0] ?? null,
+    business: business
+      ? {
+          name: business.businessName,
+          address: business.address,
+        }
+      : null,
+    customer: customer
+      ? {
+          id: customer.id,
+          fullName: customer.fullName,
+          phoneNumber: customer.phoneNumber,
         }
       : null,
     driver: driver

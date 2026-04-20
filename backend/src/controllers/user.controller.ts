@@ -1,9 +1,9 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns } from 'drizzle-orm';
 import argon2 from 'argon2';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db.js';
-import { users } from '../schema.js';
+import { driverProfile, users } from '../schema.js';
 
 const userRoleValues = [
   'customer',
@@ -220,12 +220,58 @@ export const getAllUsers = async (c: Context) => {
   );
   const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
 
-  const rows = await db
-    .select()
-    .from(users)
-    .orderBy(desc(users.createdAt))
-    .limit(limit)
-    .offset(offset);
+  const roleRaw = c.req.query('role')?.trim().toLowerCase();
+  const roleFilter =
+    roleRaw && (userRoleValues as readonly string[]).includes(roleRaw)
+      ? (roleRaw as (typeof userRoleValues)[number])
+      : undefined;
+  const driverAvailable =
+    c.req.query('driverAvailable')?.trim().toLowerCase() === 'true';
+
+  if (roleFilter === 'driver' && driverAvailable) {
+    const userCols = getTableColumns(users);
+    const rows = await db
+      .select(userCols)
+      .from(users)
+      .innerJoin(driverProfile, eq(driverProfile.userId, users.id))
+      .where(
+        and(
+          eq(users.role, 'driver'),
+          eq(users.status, 'active'),
+          eq(driverProfile.isAvailable, true),
+        ),
+      )
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      users: rows.map((row) => toPublicUser(row as typeof users.$inferSelect)),
+      limit,
+      offset,
+    });
+  }
+
+  const whereParts = [];
+  if (roleFilter) {
+    whereParts.push(eq(users.role, roleFilter));
+  }
+
+  const rows =
+    whereParts.length > 0
+      ? await db
+          .select()
+          .from(users)
+          .where(and(...whereParts))
+          .orderBy(desc(users.createdAt))
+          .limit(limit)
+          .offset(offset)
+      : await db
+          .select()
+          .from(users)
+          .orderBy(desc(users.createdAt))
+          .limit(limit)
+          .offset(offset);
 
   return c.json({
     users: rows.map(toPublicUser),

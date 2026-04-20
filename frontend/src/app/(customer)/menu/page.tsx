@@ -13,6 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 import { useCarts } from "../_hooks/use-carts";
 import { useLiveAddress } from "../_hooks/use-live-address";
+import { useNotifications } from "../_hooks/use-notifications";
 import {
   catalogItemImageUrl,
   fetchCategoryItems,
@@ -48,6 +49,11 @@ export default function CustomerMenuPage() {
     loadPrimaryActiveCart,
     loading: cartLoading,
   } = useCarts();
+  const {
+    notifications,
+    loading: notificationsLoading,
+    loadNotifications,
+  } = useNotifications();
 
   const todayLabel = useMemo(
     () =>
@@ -122,6 +128,15 @@ export default function CustomerMenuPage() {
   useEffect(() => {
     void loadPrimaryActiveCart();
   }, [loadPrimaryActiveCart]);
+
+  useEffect(() => {
+    void loadNotifications({ limit: 50 });
+  }, [loadNotifications]);
+
+  const notificationUnreadCount = useMemo(
+    () => notifications.filter((n) => !n.readStatus).length,
+    [notifications],
+  );
 
   const scopedItems = useMemo(() => {
     if (!businessIdFromQuery) return items;
@@ -206,6 +221,9 @@ export default function CustomerMenuPage() {
         cartTotalQuantity={activeCartSummary?.totalQuantity ?? 0}
         cartSubtotal={activeCartSummary?.subtotal ?? "0.00"}
         cartLoading={cartLoading}
+        notifications={notifications}
+        notificationsLoading={notificationsLoading}
+        notificationUnreadCount={notificationUnreadCount}
       />
 
       <section className="space-y-4">

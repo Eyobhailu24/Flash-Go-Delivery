@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { authFetch, readAuthJson } from "@/lib/auth-api";
 import { useCarts } from "../_hooks/use-carts";
 import { useLiveAddress } from "../_hooks/use-live-address";
+import { useNotifications } from "../_hooks/use-notifications";
 
 export default function CustomerProfilePage() {
   const { user, isReady, refreshUser, changePassword } = useAuth();
@@ -22,6 +23,11 @@ export default function CustomerProfilePage() {
     loadPrimaryActiveCart,
     loading: cartLoading,
   } = useCarts();
+  const {
+    notifications,
+    loading: notificationsLoading,
+    loadNotifications,
+  } = useNotifications();
   const { liveAddress, loading: loadingLiveAddress } = useLiveAddress();
 
   const [savingAccount, setSavingAccount] = useState(false);
@@ -56,6 +62,15 @@ export default function CustomerProfilePage() {
   useEffect(() => {
     void loadPrimaryActiveCart();
   }, [loadPrimaryActiveCart]);
+
+  useEffect(() => {
+    void loadNotifications({ limit: 50 });
+  }, [loadNotifications]);
+
+  const notificationUnreadCount = useMemo(
+    () => notifications.filter((n) => !n.readStatus).length,
+    [notifications],
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -140,6 +155,9 @@ export default function CustomerProfilePage() {
         cartTotalQuantity={activeCartSummary?.totalQuantity ?? 0}
         cartSubtotal={activeCartSummary?.subtotal ?? "0.00"}
         cartLoading={cartLoading}
+        notifications={notifications}
+        notificationsLoading={notificationsLoading}
+        notificationUnreadCount={notificationUnreadCount}
       />
 
       <section className="space-y-2">

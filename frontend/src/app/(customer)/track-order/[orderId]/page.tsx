@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { formatBirr } from "@/lib/currency";
 import { useCarts } from "../../_hooks/use-carts";
 import { useLiveAddress } from "../../_hooks/use-live-address";
+import { useNotifications } from "../../_hooks/use-notifications";
 import { type CustomerOrder, useOrders } from "../../_hooks/use-orders";
 
 function formatOrderDate(input: string): string {
@@ -94,6 +95,11 @@ export default function CustomerTrackOrderDetailPage() {
   } = useCarts();
   const { liveAddress, loading: loadingLiveAddress } = useLiveAddress();
   const { selectedOrder, loadingDetail, loadOrderById } = useOrders();
+  const {
+    notifications,
+    loading: notificationsLoading,
+    loadNotifications,
+  } = useNotifications();
 
   const firstName = user?.fullName?.split(" ")[0] ?? "Guest";
   const todayLabel = useMemo(
@@ -115,6 +121,15 @@ export default function CustomerTrackOrderDetailPage() {
   useEffect(() => {
     void loadPrimaryActiveCart();
   }, [loadPrimaryActiveCart]);
+
+  useEffect(() => {
+    void loadNotifications({ limit: 50 });
+  }, [loadNotifications]);
+
+  const notificationUnreadCount = useMemo(
+    () => notifications.filter((n) => !n.readStatus).length,
+    [notifications],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -156,6 +171,9 @@ export default function CustomerTrackOrderDetailPage() {
         cartTotalQuantity={activeCartSummary?.totalQuantity ?? 0}
         cartSubtotal={activeCartSummary?.subtotal ?? "0.00"}
         cartLoading={cartLoading}
+        notifications={notifications}
+        notificationsLoading={notificationsLoading}
+        notificationUnreadCount={notificationUnreadCount}
       />
 
       <section className="space-y-3">

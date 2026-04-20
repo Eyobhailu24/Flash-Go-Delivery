@@ -15,6 +15,7 @@ import { cartRoutes } from './routes/cart.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
 import { paymentRoutes } from './routes/payment.routes.js';
 import { driverDispatchRoutes } from './routes/driver-dispatch.routes.js';
+import { notificationsRoutes } from './routes/notifications.routes.js';
 
 const app = new Hono();
 
@@ -86,6 +87,7 @@ app.route('/carts', cartRoutes);
 app.route('/orders', orderRoutes);
 app.route('/payments', paymentRoutes);
 app.route('/driver-dispatch', driverDispatchRoutes);
+app.route('/notifications', notificationsRoutes);
 
 app.get('/health', async (c) => {
   const result = await db.select().from(users).limit(1);

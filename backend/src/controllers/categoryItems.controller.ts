@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, ilike } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db.js';
@@ -453,6 +453,24 @@ export const getAllCategoryItems = async (
     }
   }
 
+  const businessId = c.req.query('businessId')?.trim();
+  if (businessId && !z.string().uuid().safeParse(businessId).success) {
+    return c.json({ message: 'Invalid businessId query parameter.' }, 400);
+  }
+  if (businessId) {
+    const [biz] = await db
+      .select({ id: businessProfile.userId })
+      .from(businessProfile)
+      .where(eq(businessProfile.userId, businessId))
+      .limit(1);
+    if (!biz) {
+      return c.json({ message: 'Business not found.' }, 404);
+    }
+  }
+
+  const qRaw = c.req.query('q')?.trim() ?? '';
+  const qClean = qRaw.slice(0, 120).replace(/[%_\\]/g, '');
+
   const limitRaw = c.req.query('limit');
   const offsetRaw = c.req.query('offset');
   const limit = Math.min(
@@ -461,7 +479,24 @@ export const getAllCategoryItems = async (
   );
   const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
 
-  const rows = await db
+  const conditions = [];
+  if (categoryId) {
+    conditions.push(eq(categoryItems.categoryId, categoryId));
+  }
+  if (businessId) {
+    conditions.push(eq(productCategories.businessId, businessId));
+  }
+  if (qClean.length > 0) {
+    conditions.push(ilike(categoryItems.name, `%${qClean}%`));
+  }
+  const whereExpr =
+    conditions.length === 0
+      ? undefined
+      : conditions.length === 1
+        ? conditions[0]
+        : and(...conditions);
+
+  const baseQuery = db
     .select({
       id: categoryItems.id,
       categoryId: categoryItems.categoryId,
@@ -491,12 +526,9 @@ export const getAllCategoryItems = async (
     .innerJoin(
       businessProfile,
       eq(productCategories.businessId, businessProfile.userId),
-    )
-    .where(
-      categoryId
-        ? eq(categoryItems.categoryId, categoryId)
-        : undefined,
-    )
+    );
+
+  const rows = await (whereExpr ? baseQuery.where(whereExpr) : baseQuery)
     .orderBy(
       asc(categoryItems.sortOrder),
       asc(categoryItems.createdAt),

@@ -6,6 +6,7 @@ import type { AuthUser } from "../middleware/auth.middleware.js";
 import {
   businessProfile,
   customerProfile,
+  driverProfile,
   notifications,
   orderDriverOffers,
   orderItems,
@@ -311,6 +312,11 @@ export const acceptDriverOffer = async (c: Context<DriverEnv>) => {
         ),
       );
 
+    await tx
+      .update(driverProfile)
+      .set({ isAvailable: false })
+      .where(eq(driverProfile.userId, driverId));
+
     return updatedOrder;
   });
 
@@ -498,6 +504,11 @@ export const markDriverOrderDelivered = async (c: Context<DriverEnv>) => {
     .set({ status: "delivered" })
     .where(eq(orders.id, order.id))
     .returning();
+
+  await db
+    .update(driverProfile)
+    .set({ isAvailable: true })
+    .where(eq(driverProfile.userId, driverId));
 
   return c.json({ order: updated });
 };

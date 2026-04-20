@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  ClipboardListIcon,
   LayoutDashboardIcon,
   LogOutIcon,
   PackageIcon,
@@ -38,6 +39,12 @@ const nav = [
     href: '/admin/users',
     label: 'Users',
     icon: UsersIcon,
+    exact: false,
+  },
+  {
+    href: '/admin/orders',
+    label: 'Orders',
+    icon: ClipboardListIcon,
     exact: false,
   },
   {

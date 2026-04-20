@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { CustomerMapLocationPickerDialog } from "@/components/customer/customer-map-location-picker-dialog";
 import { CustomerTopNavbar } from "@/components/customer/customer-top-navbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,18 @@ import {
   useCheckout,
 } from "../_hooks/use-checkout";
 import { useLiveAddress } from "../_hooks/use-live-address";
+import { useNotifications } from "../_hooks/use-notifications";
+import { reverseGeocodeCoordinates } from "@/lib/location-api";
+import {
+  fetchMyCustomerProfile,
+  patchMyCustomerProfile,
+  type CustomerAddress,
+} from "@/lib/customer-profile-api";
+
+type Coordinates = {
+  latitude: number;
+  longitude: number;
+};
 
 function CheckoutSkeleton() {
   return (
@@ -61,9 +74,18 @@ export default function CustomerCheckoutPage() {
     isUpdatingItem,
     loading: cartLoading,
   } = useCarts();
+  const {
+    notifications,
+    loading: notificationsLoading,
+    loadNotifications,
+  } = useNotifications();
   const { placeOrder, loading: checkoutLoading } = useCheckout();
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
     useState<CheckoutPaymentMethod>("cash");
+  const [addressSaving, setAddressSaving] = useState(false);
+  const [selectedDeliveryAddress, setSelectedDeliveryAddress] =
+    useState<CustomerAddress | null>(null);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
 
   const todayLabel = useMemo(
     () =>
@@ -77,7 +99,11 @@ export default function CustomerCheckoutPage() {
   );
 
   const firstName = user?.fullName?.split(" ")[0] ?? "Guest";
-  const { liveAddress, loading: loadingLiveAddress } = useLiveAddress();
+  const {
+    liveAddress,
+    loading: loadingLiveAddress,
+    refreshAddress,
+  } = useLiveAddress();
   const profileAddress =
     (user as { address?: string } | null)?.address?.trim() || "";
   const userAddress = loadingLiveAddress
@@ -87,6 +113,129 @@ export default function CustomerCheckoutPage() {
   useEffect(() => {
     void loadPrimaryActiveCart();
   }, [loadPrimaryActiveCart]);
+
+  useEffect(() => {
+    void loadNotifications({ limit: 50 });
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const profile = await fetchMyCustomerProfile();
+        if (cancelled) return;
+        const addresses = profile?.addresses ?? [];
+        const fallback = addresses[0] ?? null;
+        setSelectedDeliveryAddress(
+          addresses.find((entry) => entry.isDefault) ?? fallback,
+        );
+      } catch {
+        if (!cancelled) setSelectedDeliveryAddress(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const notificationUnreadCount = useMemo(
+    () => notifications.filter((n) => !n.readStatus).length,
+    [notifications],
+  );
+
+  const selectedCoordinates = useMemo(() => {
+    if (
+      !selectedDeliveryAddress ||
+      typeof selectedDeliveryAddress.lat !== "number" ||
+      typeof selectedDeliveryAddress.lng !== "number" ||
+      !Number.isFinite(selectedDeliveryAddress.lat) ||
+      !Number.isFinite(selectedDeliveryAddress.lng)
+    ) {
+      return null;
+    }
+    return {
+      latitude: selectedDeliveryAddress.lat,
+      longitude: selectedDeliveryAddress.lng,
+    };
+  }, [selectedDeliveryAddress]);
+
+  const saveDeliveryAddress = async (
+    nextAddress: string,
+    coords: Coordinates,
+    label = "Current location",
+  ) => {
+    setAddressSaving(true);
+    try {
+      const profile = await fetchMyCustomerProfile();
+      const existing = profile?.addresses ?? [];
+      const nextAddresses: CustomerAddress[] = [
+        {
+          label,
+          address: nextAddress,
+          lat: coords.latitude,
+          lng: coords.longitude,
+          isDefault: true,
+        },
+        ...existing
+          .map((entry) => ({
+            ...entry,
+            isDefault: false,
+          }))
+          .filter(
+            (entry) =>
+              !(
+                entry.address === nextAddress &&
+                entry.lat === coords.latitude &&
+                entry.lng === coords.longitude
+              ),
+          ),
+      ];
+      const updated = await patchMyCustomerProfile({ addresses: nextAddresses });
+      const addresses = updated.addresses ?? [];
+      setSelectedDeliveryAddress(
+        addresses.find((entry) => entry.isDefault) ?? addresses[0] ?? null,
+      );
+      toast.success("Delivery location saved.");
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Could not save delivery location.",
+      );
+      throw e;
+    } finally {
+      setAddressSaving(false);
+    }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    try {
+      await refreshAddress();
+      const current = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 60000,
+        });
+      });
+      const lat = current.coords.latitude;
+      const lng = current.coords.longitude;
+      const resolved = await reverseGeocodeCoordinates(lat, lng);
+      const nextAddress = resolved?.formattedAddress ?? `Pinned: ${lat}, ${lng}`;
+      await saveDeliveryAddress(nextAddress, { latitude: lat, longitude: lng });
+    } catch {
+      // toast handled upstream
+    }
+  };
+
+  const handleMapConfirm = async (location: Coordinates) => {
+    const resolved = await reverseGeocodeCoordinates(
+      location.latitude,
+      location.longitude,
+    );
+    const nextAddress =
+      resolved?.formattedAddress ??
+      `Pinned: ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`;
+    await saveDeliveryAddress(nextAddress, location, "Map pin");
+  };
 
   if (!isReady) {
     return (
@@ -137,6 +286,12 @@ export default function CustomerCheckoutPage() {
 
   const onPlaceOrder = async () => {
     if (!activeCart) return;
+    if (!selectedCoordinates) {
+      toast.error(
+        "Please choose a delivery location first (current location or map pin).",
+      );
+      return;
+    }
 
     try {
       const result = await placeOrder({
@@ -176,6 +331,9 @@ export default function CustomerCheckoutPage() {
         cartTotalQuantity={activeCartSummary?.totalQuantity ?? 0}
         cartSubtotal={activeCartSummary?.subtotal ?? "0.00"}
         cartLoading={cartLoading}
+        notifications={notifications}
+        notificationsLoading={notificationsLoading}
+        notificationUnreadCount={notificationUnreadCount}
       />
 
       <section className="flex items-center justify-between gap-3">
@@ -294,6 +452,40 @@ export default function CustomerCheckoutPage() {
               <CardTitle className="text-gray-800">Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="rounded-2xl bg-orange-50 p-3">
+                <p className="text-sm font-semibold text-gray-800">
+                  Delivery location
+                </p>
+                <p className="mt-1 text-xs text-gray-600">
+                  {selectedDeliveryAddress?.address ??
+                    "No location selected yet."}
+                </p>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  {selectedCoordinates
+                    ? `${selectedCoordinates.latitude.toFixed(6)}, ${selectedCoordinates.longitude.toFixed(6)}`
+                    : "Coordinates missing"}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl border-orange-200 bg-white text-orange-600 hover:bg-orange-100"
+                    onClick={() => void handleUseCurrentLocation()}
+                    disabled={addressSaving || loadingLiveAddress}
+                  >
+                    {addressSaving ? "Saving..." : "Use current location"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl border-orange-200 bg-white text-orange-600 hover:bg-orange-100"
+                    onClick={() => setMapPickerOpen(true)}
+                    disabled={addressSaving}
+                  >
+                    Pick on map
+                  </Button>
+                </div>
+              </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500">Items</span>
                 <span className="font-medium text-gray-800">
@@ -370,7 +562,7 @@ export default function CustomerCheckoutPage() {
                   type="button"
                   className="h-11 w-full rounded-xl bg-orange-500 text-white hover:bg-orange-400"
                   onClick={() => void onPlaceOrder()}
-                  disabled={checkoutLoading}
+                  disabled={checkoutLoading || addressSaving || !selectedCoordinates}
                 >
                   {checkoutLoading ? "Placing order..." : "Place order"}
                 </Button>
@@ -379,6 +571,15 @@ export default function CustomerCheckoutPage() {
           </Card>
         </section>
       )}
+      <CustomerMapLocationPickerDialog
+        open={mapPickerOpen}
+        onOpenChange={setMapPickerOpen}
+        initialLatitude={selectedCoordinates?.latitude ?? null}
+        initialLongitude={selectedCoordinates?.longitude ?? null}
+        onConfirm={(location) => {
+          void handleMapConfirm(location);
+        }}
+      />
     </main>
   );
 }
