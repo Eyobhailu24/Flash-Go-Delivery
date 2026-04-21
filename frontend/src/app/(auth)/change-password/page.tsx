@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
+import { defaultHomePathForRole } from "@/lib/role-access";
 import { AuthApiError } from "@/lib/auth-api";
 
 const PASSWORD_MIN = 8;
@@ -47,7 +48,11 @@ export default function ChangePasswordPage() {
     setSubmitting(true);
     try {
       await changePassword({ currentPassword, newPassword });
-      router.push("/");
+      if (user) {
+        router.push(defaultHomePathForRole(user.role));
+      } else {
+        router.push("/login");
+      }
     } catch (err) {
       setError(err instanceof AuthApiError ? err.message : "Something went wrong.");
     } finally {

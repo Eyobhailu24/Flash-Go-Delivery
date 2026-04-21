@@ -1014,6 +1014,262 @@ export const getAdminOrderById = async (c: Context<OrderEnv>) => {
   });
 };
 
+export const listBusinessOrders = async (c: Context<OrderEnv>) => {
+  const limitRaw = c.req.query("limit");
+  const offsetRaw = c.req.query("offset");
+  const limit = Math.min(Math.max(Number(limitRaw ?? 50) || 50, 1), 200);
+  const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
+  const businessUserId = c.var.user.id;
+
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.businessId, businessUserId))
+    .orderBy(desc(orders.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  if (rows.length === 0) {
+    return c.json({ orders: [], limit, offset });
+  }
+
+  const orderIds = rows.map((row) => row.id);
+  const businessIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.businessId)
+        .filter((businessId): businessId is string => Boolean(businessId)),
+    ),
+  );
+  const driverIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.driverId)
+        .filter((driverId): driverId is string => Boolean(driverId)),
+    ),
+  );
+  const customerIds = Array.from(new Set(rows.map((row) => row.customerId)));
+
+  const [
+    paymentRows,
+    businessRows,
+    driverUserRows,
+    driverProfileRows,
+    customerRows,
+  ] = await Promise.all([
+    db.select().from(payments).where(inArray(payments.orderId, orderIds)),
+    businessIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            userId: businessProfile.userId,
+            businessName: businessProfile.businessName,
+            address: businessProfile.address,
+          })
+          .from(businessProfile)
+          .where(inArray(businessProfile.userId, businessIds)),
+    driverIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: users.id,
+            fullName: users.fullName,
+            phoneNumber: users.phoneNumber,
+          })
+          .from(users)
+          .where(inArray(users.id, driverIds)),
+    driverIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            userId: driverProfile.userId,
+            isAvailable: driverProfile.isAvailable,
+            rating: driverProfile.rating,
+            vehicleType: driverProfile.vehicleType,
+          })
+          .from(driverProfile)
+          .where(inArray(driverProfile.userId, driverIds)),
+    db
+      .select({
+        id: users.id,
+        fullName: users.fullName,
+        phoneNumber: users.phoneNumber,
+      })
+      .from(users)
+      .where(inArray(users.id, customerIds)),
+  ]);
+
+  const paymentByOrderId = new Map(
+    paymentRows.map((payment) => [payment.orderId, payment]),
+  );
+  const businessByUserId = new Map(
+    businessRows.map((business) => [business.userId, business]),
+  );
+  const driverById = new Map(
+    driverUserRows.map((driver) => [driver.id, driver]),
+  );
+  const driverProfileById = new Map(
+    driverProfileRows.map((profile) => [profile.userId, profile]),
+  );
+  const customerById = new Map(
+    customerRows.map((customer) => [customer.id, customer]),
+  );
+
+  return c.json({
+    orders: rows.map((order) => {
+      const business = order.businessId
+        ? businessByUserId.get(order.businessId)
+        : null;
+      const driver = order.driverId ? driverById.get(order.driverId) : null;
+      const driverExtra = order.driverId
+        ? driverProfileById.get(order.driverId)
+        : null;
+      const customer = customerById.get(order.customerId);
+      return {
+        ...order,
+        payment: paymentByOrderId.get(order.id) ?? null,
+        business: business
+          ? {
+              name: business.businessName,
+              address: business.address,
+            }
+          : null,
+        customer: customer
+          ? {
+              id: customer.id,
+              fullName: customer.fullName,
+              phoneNumber: customer.phoneNumber,
+            }
+          : null,
+        driver: driver
+          ? {
+              id: driver.id,
+              fullName: driver.fullName,
+              phoneNumber: driver.phoneNumber,
+              isAvailable: driverExtra?.isAvailable ?? null,
+              rating: driverExtra?.rating ?? null,
+              vehicleType: driverExtra?.vehicleType ?? null,
+            }
+          : null,
+      };
+    }),
+    limit,
+    offset,
+  });
+};
+
+export const getBusinessOrderById = async (c: Context<OrderEnv>) => {
+  const params = orderIdParamSchema.safeParse(c.req.param());
+  if (!params.success) {
+    return c.json({ message: "Invalid order id." }, 400);
+  }
+
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.id, params.data.id),
+        eq(orders.businessId, c.var.user.id),
+      ),
+    )
+    .limit(1);
+  const order = rows[0];
+  if (!order) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+
+  const relatedItems = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.orderId, order.id));
+  const paymentRows = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.orderId, order.id))
+    .limit(1);
+  const [businessRows, driverRows, driverProfileRows, customerRows] =
+    await Promise.all([
+      order.businessId
+        ? db
+            .select({
+              userId: businessProfile.userId,
+              businessName: businessProfile.businessName,
+              address: businessProfile.address,
+            })
+            .from(businessProfile)
+            .where(eq(businessProfile.userId, order.businessId))
+            .limit(1)
+        : Promise.resolve([]),
+      order.driverId
+        ? db
+            .select({
+              id: users.id,
+              fullName: users.fullName,
+              phoneNumber: users.phoneNumber,
+            })
+            .from(users)
+            .where(eq(users.id, order.driverId))
+            .limit(1)
+        : Promise.resolve([]),
+      order.driverId
+        ? db
+            .select({
+              userId: driverProfile.userId,
+              isAvailable: driverProfile.isAvailable,
+              rating: driverProfile.rating,
+              vehicleType: driverProfile.vehicleType,
+            })
+            .from(driverProfile)
+            .where(eq(driverProfile.userId, order.driverId))
+            .limit(1)
+        : Promise.resolve([]),
+      db
+        .select({
+          id: users.id,
+          fullName: users.fullName,
+          phoneNumber: users.phoneNumber,
+        })
+        .from(users)
+        .where(eq(users.id, order.customerId))
+        .limit(1),
+    ]);
+
+  const business = businessRows[0] ?? null;
+  const driver = driverRows[0] ?? null;
+  const driverExtra = driverProfileRows[0] ?? null;
+  const customer = customerRows[0] ?? null;
+
+  return c.json({
+    order,
+    items: relatedItems,
+    payment: paymentRows[0] ?? null,
+    business: business
+      ? {
+          name: business.businessName,
+          address: business.address,
+        }
+      : null,
+    customer: customer
+      ? {
+          id: customer.id,
+          fullName: customer.fullName,
+          phoneNumber: customer.phoneNumber,
+        }
+      : null,
+    driver: driver
+      ? {
+          id: driver.id,
+          fullName: driver.fullName,
+          phoneNumber: driver.phoneNumber,
+          isAvailable: driverExtra?.isAvailable ?? null,
+          rating: driverExtra?.rating ?? null,
+          vehicleType: driverExtra?.vehicleType ?? null,
+        }
+      : null,
+  });
+};
+
 export const patchAdminOrder = async (c: Context<OrderEnv>) => {
   const params = orderIdParamSchema.safeParse(c.req.param());
   if (!params.success) {

@@ -63,11 +63,24 @@ driverProfiles.patch('/:id', updateDriverProfile);
 driverProfiles.delete('/:id', deleteDriverProfile);
 
 const businessProfiles = new Hono<Env>();
-businessProfiles.get('/', getAllBusinessProfiles);
-businessProfiles.get('/:id', getBusinessProfileById);
-businessProfiles.post('/', createBusinessProfile);
-businessProfiles.patch('/:id', updateBusinessProfile);
-businessProfiles.delete('/:id', deleteBusinessProfile);
+businessProfiles.use('*', protect);
+businessProfiles.get('/', restrictTo('admin'), getAllBusinessProfiles);
+businessProfiles.post('/', restrictTo('admin'), createBusinessProfile);
+businessProfiles.get(
+  '/:id',
+  restrictTo('admin', 'business'),
+  getBusinessProfileById,
+);
+businessProfiles.patch(
+  '/:id',
+  restrictTo('admin', 'business'),
+  updateBusinessProfile,
+);
+businessProfiles.delete(
+  '/:id',
+  restrictTo('admin'),
+  deleteBusinessProfile,
+);
 
 export const profileRoutes = new Hono();
 profileRoutes.route('/admin', adminProfiles);

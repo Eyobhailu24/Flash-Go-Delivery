@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 import { useCarts } from "../_hooks/use-carts";
 import { useLiveAddress } from "../_hooks/use-live-address";
-import { useNotifications } from "../_hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications";
 import {
   catalogItemImageUrl,
   fetchCategoryItems,

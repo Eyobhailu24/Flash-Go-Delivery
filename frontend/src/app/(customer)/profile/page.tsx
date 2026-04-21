@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { authFetch, readAuthJson } from "@/lib/auth-api";
 import { useCarts } from "../_hooks/use-carts";
 import { useLiveAddress } from "../_hooks/use-live-address";
-import { useNotifications } from "../_hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications";
 
 export default function CustomerProfilePage() {
   const { user, isReady, refreshUser, changePassword } = useAuth();

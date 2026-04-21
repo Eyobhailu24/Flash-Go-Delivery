@@ -2,6 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db.js';
+import type { AuthUser } from '../middleware/auth.middleware.js';
 import {
   saveBusinessProfileImage,
   tryRemoveBusinessProfileImage,
@@ -75,6 +76,18 @@ function parseOptionalCoordinate(v: unknown): number | undefined {
   if (t === '') return undefined;
   const n = Number(t);
   return Number.isFinite(n) ? n : undefined;
+}
+
+type AuthContext = Context<{ Variables: { user: AuthUser } }>;
+
+function assertBusinessProfileReadAccess(
+  c: AuthContext,
+  profileUserId: string,
+): Response | null {
+  const user = c.var.user;
+  if (user.role === 'admin') return null;
+  if (user.role === 'business' && user.id === profileUserId) return null;
+  return c.json({ message: 'Forbidden.' }, 403);
 }
 
 async function assertUserRole(
@@ -225,10 +238,15 @@ export const createBusinessProfile = async (c: Context) => {
   }
 };
 
-export const updateBusinessProfile = async (c: Context) => {
+export const updateBusinessProfile = async (c: AuthContext) => {
   const params = idParamSchema.safeParse(c.req.param());
   if (!params.success) {
     return c.json({ message: 'Invalid user id.' }, 400);
+  }
+
+  const actor = c.var.user;
+  if (actor.role === 'business' && actor.id !== params.data.id) {
+    return c.json({ message: 'Forbidden.' }, 403);
   }
 
   const [existing] = await db
@@ -367,6 +385,18 @@ export const updateBusinessProfile = async (c: Context) => {
     );
   }
 
+  if (actor.role === 'business') {
+    delete patch.status;
+    delete patch.approvedDate;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return c.json(
+      { message: 'At least one field is required.' },
+      400,
+    );
+  }
+
   const [updated] = await db
     .update(businessProfile)
     .set(patch)
@@ -427,11 +457,39 @@ export const getAllBusinessProfiles = async (c: Context) => {
   });
 };
 
-export const getBusinessProfileById = async (c: Context) => {
+/** Storefront: approved businesses only, no auth. */
+export const getPublicApprovedBusinessProfiles = async (c: Context) => {
+  const limitRaw = c.req.query('limit');
+  const offsetRaw = c.req.query('offset');
+  const limit = Math.min(
+    Math.max(Number(limitRaw ?? 50) || 50, 1),
+    200,
+  );
+  const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
+
+  const rows = await db
+    .select()
+    .from(businessProfile)
+    .where(eq(businessProfile.status, 'approved'))
+    .orderBy(desc(businessProfile.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  return c.json({
+    profiles: rows,
+    limit,
+    offset,
+  });
+};
+
+export const getBusinessProfileById = async (c: AuthContext) => {
   const params = idParamSchema.safeParse(c.req.param());
   if (!params.success) {
     return c.json({ message: 'Invalid user id.' }, 400);
   }
+
+  const denied = assertBusinessProfileReadAccess(c, params.data.id);
+  if (denied) return denied;
 
   const [row] = await db
     .select()

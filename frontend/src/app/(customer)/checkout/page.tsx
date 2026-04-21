@@ -22,7 +22,7 @@ import {
   useCheckout,
 } from "../_hooks/use-checkout";
 import { useLiveAddress } from "../_hooks/use-live-address";
-import { useNotifications } from "../_hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications";
 import { reverseGeocodeCoordinates } from "@/lib/location-api";
 import {
   fetchMyCustomerProfile,

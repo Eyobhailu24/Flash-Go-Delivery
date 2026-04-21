@@ -1,4 +1,5 @@
 import { AdminShell } from "@/components/admin/admin-shell";
+import { SegmentAccessGuard } from "@/components/auth/segment-access-guard";
 
 export default function AdminLayout({
   children,
@@ -7,7 +8,9 @@ export default function AdminLayout({
 }>) {
   return (
     <div className="admin-dashboard min-h-svh">
-      <AdminShell>{children}</AdminShell>
+      <AdminShell>
+        <SegmentAccessGuard segment="admin">{children}</SegmentAccessGuard>
+      </AdminShell>
     </div>
   );
 }

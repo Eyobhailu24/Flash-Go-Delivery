@@ -15,7 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 import { useCarts } from "./_hooks/use-carts";
 import { useLiveAddress } from "./_hooks/use-live-address";
-import { useNotifications } from "./_hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications";
 import {
   fetchCategoryItems,
   fetchPublicCategoryNames,
@@ -23,7 +23,7 @@ import {
 } from "@/lib/admin-catalog-api";
 import {
   businessProfileImageUrl,
-  fetchBusinessProfiles,
+  fetchPublicApprovedBusinessProfiles,
 } from "@/lib/admin-business-api";
 import { formatDistanceKm, haversineDistanceKm } from "@/lib/distance";
 
@@ -124,7 +124,7 @@ export default function CustomerHomePage() {
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetchBusinessProfiles({
+        const response = await fetchPublicApprovedBusinessProfiles({
           limit: 20,
           offset: 0,
         });

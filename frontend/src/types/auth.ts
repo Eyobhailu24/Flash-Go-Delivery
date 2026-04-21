@@ -26,7 +26,7 @@ export type LoginInput = {
 };
 
 export type LoginResult =
-  | { requiresVerification: false }
+  | { requiresVerification: false; user: AuthUser }
   | { requiresVerification: true; phoneNumber: string };
 
 export type ChangePasswordInput = {

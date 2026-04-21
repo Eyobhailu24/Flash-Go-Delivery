@@ -31,7 +31,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { CartItemView } from '@/app/(customer)/_hooks/use-carts';
-import type { Notification } from '@/app/(customer)/_hooks/use-notifications';
+import type { Notification } from '@/hooks/use-notifications';
 import { catalogItemImageUrl } from '@/lib/admin-catalog-api';
 import { formatBirr } from '@/lib/currency';
 

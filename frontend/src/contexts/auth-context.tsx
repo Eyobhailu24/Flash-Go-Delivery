@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error("Login succeeded but user payload is missing.");
     }
     setUser(data.user);
-    return { requiresVerification: false };
+    return { requiresVerification: false, user: data.user };
   }, []);
 
   const logout = useCallback(async () => {

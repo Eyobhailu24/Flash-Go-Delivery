@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
+import { defaultHomePathForRole } from "@/lib/role-access";
 import { AuthApiError } from "@/lib/auth-api";
 
 const PASSWORD_MIN = 8;
@@ -29,7 +30,7 @@ export default function SignupPage() {
 
   useEffect(() => {
     if (isReady && user) {
-      router.replace("/");
+      router.replace(defaultHomePathForRole(user.role));
     }
   }, [isReady, user, router]);
 

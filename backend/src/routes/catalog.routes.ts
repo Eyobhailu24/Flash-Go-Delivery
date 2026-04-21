@@ -14,6 +14,7 @@ import {
   getPublicCategoryNames,
   updateCategoryName,
 } from '../controllers/categoryNameCatalog.controller.js';
+import { getPublicApprovedBusinessProfiles } from '../controllers/businessProfile.controller.js';
 import {
   createProductCategory,
   deleteProductCategory,
@@ -62,6 +63,7 @@ categoryNames.delete(
 
 const publicCatalog = new Hono();
 publicCatalog.get('/category-names', getPublicCategoryNames);
+publicCatalog.get('/business-profiles', getPublicApprovedBusinessProfiles);
 
 export const catalogRoutes = new Hono();
 catalogRoutes.route('/product-categories', categories);

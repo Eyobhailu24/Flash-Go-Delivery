@@ -12,7 +12,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { formatBirr } from "@/lib/currency";
 import { useCarts } from "../_hooks/use-carts";
 import { useLiveAddress } from "../_hooks/use-live-address";
-import { useNotifications } from "../_hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications";
 import { type CustomerOrder, useOrders } from "../_hooks/use-orders";
 
 function formatOrderDate(input: string): string {

@@ -32,7 +32,7 @@ import {
   useCheckout,
 } from "../_hooks/use-checkout";
 import { useLiveAddress } from "../_hooks/use-live-address";
-import { useNotifications } from "../_hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications";
 
 type Coordinates = { latitude: number; longitude: number };
 type LocationTarget = "pickup" | "dropoff";

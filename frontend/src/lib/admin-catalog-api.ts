@@ -197,24 +197,50 @@ export async function fetchProductCategories(
 }
 
 export async function createProductCategory(input: {
-  businessId: string;
+  businessId?: string;
   categoryNameId: string;
   sortOrder?: number;
 }): Promise<ProductCategory> {
+  const body: Record<string, unknown> = {
+    categoryNameId: input.categoryNameId,
+  };
+  if (input.businessId !== undefined) {
+    body.businessId = input.businessId;
+  }
+  if (input.sortOrder !== undefined) {
+    body.sortOrder = input.sortOrder;
+  }
   const res = await authFetch("/catalog/product-categories", {
     method: "POST",
-    body: JSON.stringify({
-      businessId: input.businessId,
-      categoryNameId: input.categoryNameId,
-      ...(input.sortOrder !== undefined
-        ? { sortOrder: input.sortOrder }
-        : {}),
-    }),
+    body: JSON.stringify(body),
   });
   const data = await readAuthJson<{ category: ProductCategory }>(
     res,
   );
   return data.category;
+}
+
+export async function updateProductCategory(
+  id: string,
+  input: { categoryNameId?: string; sortOrder?: number },
+): Promise<ProductCategory> {
+  const res = await authFetch(
+    `/catalog/product-categories/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+  const data = await readAuthJson<{ category: ProductCategory }>(res);
+  return data.category;
+}
+
+export async function deleteProductCategory(id: string): Promise<void> {
+  const res = await authFetch(
+    `/catalog/product-categories/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+  await readAuthJson<{ message: string; id: string }>(res);
 }
 
 export async function fetchProductCategoryById(
@@ -309,6 +335,70 @@ export async function createCategoryItemMultipart(input: {
   });
   const data = await readAuthJson<{ item: CategoryItem }>(res);
   return data.item;
+}
+
+export async function updateCategoryItemMultipart(
+  id: string,
+  input: {
+    name?: string;
+    description?: string | null;
+    price?: number;
+    discount?: number | null;
+    isAvailable?: boolean;
+    sortOrder?: number;
+    image?: File | null;
+    removeImage?: boolean;
+  },
+): Promise<CategoryItem> {
+  const fd = new FormData();
+  if (input.name !== undefined) {
+    fd.append("name", input.name.trim());
+  }
+  if (input.description !== undefined) {
+    fd.append(
+      "description",
+      input.description === null ? "" : input.description.trim(),
+    );
+  }
+  if (input.price !== undefined) {
+    fd.append("price", String(input.price));
+  }
+  if (input.discount !== undefined) {
+    if (input.discount === null) {
+      fd.append("discount", "");
+    } else {
+      fd.append("discount", String(input.discount));
+    }
+  }
+  if (input.isAvailable !== undefined) {
+    fd.append("isAvailable", input.isAvailable ? "true" : "false");
+  }
+  if (input.sortOrder !== undefined) {
+    fd.append("sortOrder", String(input.sortOrder));
+  }
+  if (input.removeImage) {
+    fd.append("image", "");
+  } else if (input.image && input.image.size > 0) {
+    fd.append("image", input.image);
+  }
+
+  const res = await authFetch(
+    `/catalog/category-items/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: fd,
+    },
+  );
+  const data = await readAuthJson<{ item: CategoryItem }>(res);
+  return data.item;
+}
+
+export async function deleteCategoryItem(id: string): Promise<void> {
+  const res = await authFetch(
+    `/catalog/category-items/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+  await readAuthJson<{ message: string; id: string }>(res);
 }
 
 /** Absolute URL for a stored upload path such as `/uploads/category-items/…`. */

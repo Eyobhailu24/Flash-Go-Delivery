@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
+import { defaultHomePathForRole } from "@/lib/role-access";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,7 +22,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isReady && user) {
-      router.replace("/");
+      router.replace(defaultHomePathForRole(user.role));
     }
   }, [isReady, user, router]);
 
@@ -46,7 +47,7 @@ export default function LoginPage() {
         );
         return;
       }
-      router.replace("/");
+      router.replace(defaultHomePathForRole(result.user.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
