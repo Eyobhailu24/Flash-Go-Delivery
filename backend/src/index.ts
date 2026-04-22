@@ -16,6 +16,7 @@ import { orderRoutes } from './routes/order.routes.js';
 import { paymentRoutes } from './routes/payment.routes.js';
 import { driverDispatchRoutes } from './routes/driver-dispatch.routes.js';
 import { notificationsRoutes } from './routes/notifications.routes.js';
+import './bot/index.js'; // Start the Telegram bot
 
 const app = new Hono();
 

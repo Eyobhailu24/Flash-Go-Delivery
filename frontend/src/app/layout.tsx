@@ -31,6 +31,77 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col font-sans">
         <Providers>{children}</Providers>
+        {/* Google Translate Hidden Container */}
+        <div id="google_translate_element" className="absolute left-0 top-0 -z-50 size-0 overflow-hidden opacity-0 pointer-events-none"></div>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              function googleTranslateElementInit() {
+                new google.translate.TranslateElement({
+                  pageLanguage: 'en',
+                  includedLanguages: 'en,am',
+                  layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
+                  autoDisplay: false
+                }, 'google_translate_element');
+              }
+            `,
+          }}
+        />
+        <script
+          src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"
+          async
+        ></script>
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+              /* Hide top banner and bar */
+              .goog-te-banner-frame.skiptranslate,
+              .goog-te-banner-frame,
+              .goog-te-gadget-icon,
+              #goog-gt-tt,
+              .goog-te-balloon-frame,
+              .goog-tooltip,
+              .goog-tooltip:hover {
+                display: none !important;
+                visibility: hidden !important;
+              }
+              
+              /* Hide the 'Translated to' bar */
+              iframe.goog-te-banner-frame {
+                display: none !important;
+              }
+              
+              body {
+                top: 0px !important;
+                position: static !important;
+              }
+              
+              .goog-text-highlight {
+                background-color: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+              }
+
+              /* Hide the Google Translate branding and popups */
+              .goog-te-menu-value span:nth-child(5) {
+                display: none !important;
+              }
+              
+              .goog-te-gadget {
+                color: transparent !important;
+              }
+              
+              .goog-te-gadget .goog-te-combo {
+                display: none !important;
+              }
+              
+              /* Final safety to hide any skiptranslate floating elements */
+              .skiptranslate:not(.google-translate-container) {
+                 display: none !important;
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );
