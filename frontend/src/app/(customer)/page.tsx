@@ -62,16 +62,7 @@ export default function CustomerHomePage() {
     loading: notificationsLoading,
     loadNotifications,
   } = useNotifications();
-  const todayLabel = useMemo(
-    () =>
-      new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }).format(new Date()),
-    [],
-  );
+
 
   const firstName = user?.fullName?.split(" ")[0] ?? "Guest";
   const { liveAddress, coordinates, loading: loadingLiveAddress } = useLiveAddress();
@@ -243,7 +234,6 @@ export default function CustomerHomePage() {
     <main className="customer-app flex min-h-screen w-full flex-col gap-6 bg-background px-4 pt-8 pb-6 md:px-6">
       <CustomerTopNavbar
         firstName={firstName}
-        todayLabel={todayLabel}
         userAddress={userAddress}
         cartItems={cartItemsView}
         cartTotalQuantity={activeCartSummary?.totalQuantity ?? 0}
