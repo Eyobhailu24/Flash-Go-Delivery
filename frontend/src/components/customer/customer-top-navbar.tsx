@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/auth-context';
 import { Input } from '@/components/ui/input';
+import { LanguageSwitcher } from '@/components/ui/language-switcher';
 import {
   Popover,
   PopoverContent,
@@ -132,6 +133,7 @@ export function CustomerTopNavbar({
         />
       </div>
       <div className="flex shrink-0 items-center gap-2 md:gap-3">
+        <LanguageSwitcher />
         <Button
           asChild
           variant="outline"
