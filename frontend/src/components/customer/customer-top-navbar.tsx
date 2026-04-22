@@ -62,7 +62,6 @@ function formatRelativeNotificationTime(iso: string): string {
 
 type CustomerTopNavbarProps = {
   firstName: string;
-  todayLabel: string;
   userAddress: string;
   cartItems?: CartItemView[];
   cartTotalQuantity?: number;
@@ -75,7 +74,6 @@ type CustomerTopNavbarProps = {
 
 export function CustomerTopNavbar({
   firstName,
-  todayLabel,
   userAddress,
   cartItems = [],
   cartTotalQuantity = 0,
@@ -86,7 +84,7 @@ export function CustomerTopNavbar({
   notificationUnreadCount = 0,
 }: CustomerTopNavbarProps) {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] =
@@ -268,64 +266,6 @@ export function CustomerTopNavbar({
             </div>
           </PopoverContent>
         </Popover>
-        <div className="hidden text-right md:block">
-          <p className="text-sm font-semibold text-gray-900">
-            Hello, {firstName}
-          </p>
-          <p className="text-xs text-gray-500">
-            {todayLabel}
-          </p>
-        </div>
-        <div
-          onMouseEnter={() => setIsProfileMenuOpen(true)}
-          onMouseLeave={() => setIsProfileMenuOpen(false)}
-        >
-          <DropdownMenu
-            open={isProfileMenuOpen}
-            onOpenChange={setIsProfileMenuOpen}
-          >
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="rounded-full transition hover:opacity-90"
-                onClick={() => router.push('/profile')}
-              >
-                <Avatar
-                  size="lg"
-                  className="border-0 shadow-sm"
-                >
-                  <AvatarFallback className="bg-orange-100 font-semibold text-orange-700">
-                    {firstName.slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-40 rounded-xl border-0 shadow-md"
-            >
-              <DropdownMenuItem
-                asChild
-                className="focus:bg-orange-50 focus:text-orange-700"
-              >
-                <Link href="/profile">Profile</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                asChild
-                className="focus:bg-orange-50 focus:text-orange-700"
-              >
-                <Link href="/notifications">Notifications</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="focus:bg-orange-50 focus:text-orange-700"
-                onClick={() => void handleLogout()}
-                disabled={isLoggingOut}
-              >
-                {isLoggingOut ? 'Logging out...' : 'Logout'}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
         <Popover
           open={isNotificationsOpen}
           onOpenChange={setIsNotificationsOpen}
@@ -413,6 +353,66 @@ export function CustomerTopNavbar({
             </div>
           </PopoverContent>
         </Popover>
+
+        {user ? (
+          <div
+            onMouseEnter={() => setIsProfileMenuOpen(true)}
+            onMouseLeave={() => setIsProfileMenuOpen(false)}
+          >
+            <DropdownMenu
+              open={isProfileMenuOpen}
+              onOpenChange={setIsProfileMenuOpen}
+            >
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="rounded-full transition hover:opacity-90"
+                  onClick={() => router.push('/profile')}
+                >
+                  <Avatar
+                    size="lg"
+                    className="border-0 shadow-sm"
+                  >
+                    <AvatarFallback className="bg-orange-100 font-semibold text-orange-700">
+                      {firstName.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-40 rounded-xl border-0 shadow-md"
+              >
+                <DropdownMenuItem
+                  asChild
+                  className="focus:bg-orange-50 focus:text-orange-700"
+                >
+                  <Link href="/profile">Profile</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  asChild
+                  className="focus:bg-orange-50 focus:text-orange-700"
+                >
+                  <Link href="/notifications">Notifications</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="focus:bg-orange-50 focus:text-orange-700"
+                  onClick={() => void handleLogout()}
+                  disabled={isLoggingOut}
+                >
+                  {isLoggingOut ? 'Logging out...' : 'Logout'}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ) : (
+          <Button
+            asChild
+            className="h-11 rounded-xl border-0 bg-orange-500 px-6 font-semibold text-white shadow-sm transition-all hover:scale-[1.02] hover:bg-orange-400"
+          >
+            <Link href="/login">Login</Link>
+          </Button>
+        )}
       </div>
     </header>
   );
