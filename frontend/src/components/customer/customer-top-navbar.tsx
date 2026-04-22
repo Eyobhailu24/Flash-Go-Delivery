@@ -131,7 +131,6 @@ export function CustomerTopNavbar({
         />
       </div>
       <div className="flex shrink-0 items-center gap-2 md:gap-3">
-        <LanguageSwitcher />
         <Button
           asChild
           variant="outline"
@@ -353,6 +352,8 @@ export function CustomerTopNavbar({
             </div>
           </PopoverContent>
         </Popover>
+
+        <LanguageSwitcher />
 
         {user ? (
           <div

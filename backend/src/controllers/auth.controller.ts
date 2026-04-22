@@ -12,31 +12,79 @@ import { z } from 'zod';
 import { db } from '../db.js';
 import { customerProfile, otpVerifications, users } from '../schema.js';
 
+const ETHIOPIA_PHONE_E164 = /^\+251\d{9}$/;
+
+function normalizePhone(phoneNumber: string): string {
+  const trimmed = phoneNumber.replace(/\s+/g, '');
+
+  if (ETHIOPIA_PHONE_E164.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith('+')) {
+    const restDigits = trimmed.slice(1).replace(/\D/g, '');
+    if (restDigits.startsWith('251') && restDigits.length >= 12) {
+      return `+${restDigits.slice(0, 12)}`;
+    }
+  }
+
+  const digits = trimmed.replace(/\D/g, '');
+
+  if (digits.startsWith('251') && digits.length >= 12) {
+    return `+${digits.slice(0, 12)}`;
+  }
+
+  if (digits.startsWith('0') && digits.length === 10) {
+    return `+251${digits.slice(1)}`;
+  }
+
+  if (digits.length === 9) {
+    return `+251${digits}`;
+  }
+
+  if (digits.length === 12 && digits.startsWith('251')) {
+    return `+${digits}`;
+  }
+
+  return trimmed;
+}
+
+const ethiopiaPhoneSchema = z
+  .string()
+  .trim()
+  .transform((s) => normalizePhone(s))
+  .pipe(
+    z.string().regex(ETHIOPIA_PHONE_E164, {
+      message:
+        'Invalid Ethiopian phone number. Use +251 followed by nine digits (e.g. 7xx or 9xx).',
+    }),
+  );
+
 const signupSchema = z.object({
   fullName: z.string().trim().min(2),
   email: z.string().trim().email(),
-  phoneNumber: z.string().trim().min(8),
+  phoneNumber: ethiopiaPhoneSchema,
   password: z
     .string()
     .min(Number(process.env.PASSWORD_MIN_LENGTH ?? 8)),
 });
 
 const verifyOtpSchema = z.object({
-  phoneNumber: z.string().trim().min(8),
+  phoneNumber: ethiopiaPhoneSchema,
   otp: z.string().trim().min(4).max(8),
 });
 
 const loginSchema = z.object({
-  phoneNumber: z.string().trim().min(8),
+  phoneNumber: ethiopiaPhoneSchema,
   password: z.string().min(1),
 });
 
 const forgotPasswordSchema = z.object({
-  phoneNumber: z.string().trim().min(8),
+  phoneNumber: ethiopiaPhoneSchema,
 });
 
 const resetPasswordSchema = z.object({
-  phoneNumber: z.string().trim().min(8),
+  phoneNumber: ethiopiaPhoneSchema,
   otp: z.string().trim().min(4).max(8),
   newPassword: z
     .string()
@@ -53,7 +101,7 @@ const changePasswordSchema = z.object({
 const updateMeSchema = z.object({
   fullName: z.string().trim().min(2).optional(),
   email: z.string().trim().email().optional(),
-  phoneNumber: z.string().trim().min(8).optional(),
+  phoneNumber: z.string().trim().optional(),
 });
 
 const upsertMyCustomerProfileSchema = z
@@ -110,10 +158,6 @@ const otpResendCooldownSeconds = Number(
 const otpTemplate =
   process.env.AFRO_SMS_TEMPLATE_OTP ??
   'Your FlashGo OTP is {{CODE}}. It expires in {{MINUTES}} minutes.';
-
-function normalizePhone(phoneNumber: string): string {
-  return phoneNumber.replace(/\s+/g, '');
-}
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -760,7 +804,21 @@ export const updateMe = async (c: Context) => {
     patch.email = normalizeEmail(parsed.data.email);
   }
   if (parsed.data.phoneNumber !== undefined) {
-    patch.phoneNumber = normalizePhone(parsed.data.phoneNumber);
+    const raw = parsed.data.phoneNumber.trim();
+    if (!raw) {
+      return c.json({ message: 'Phone number cannot be empty.' }, 400);
+    }
+    const normalized = normalizePhone(raw);
+    if (!ETHIOPIA_PHONE_E164.test(normalized)) {
+      return c.json(
+        {
+          message:
+            'Invalid Ethiopian phone number. Use +251 followed by nine digits (e.g. 7xx or 9xx).',
+        },
+        400,
+      );
+    }
+    patch.phoneNumber = normalized;
   }
 
   if (patch.email) {

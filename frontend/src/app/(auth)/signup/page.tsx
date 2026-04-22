@@ -7,8 +7,10 @@ import { AuthBrand } from "@/components/auth/auth-brand";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { EthiopiaPhoneField } from "@/components/auth/ethiopia-phone-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toEthiopiaE164 } from "@/lib/ethiopia-phone";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 import { defaultHomePathForRole } from "@/lib/role-access";
@@ -50,9 +52,9 @@ export default function SignupPage() {
       return;
     }
 
-    const phone = phoneNumber.replace(/\s+/g, "");
-    if (phone.length < 8) {
-      setError("Phone number must be at least 8 characters.");
+    const phone = toEthiopiaE164(phoneNumber);
+    if (!phone) {
+      setError("Enter all nine digits of your mobile number after +251 (e.g. 7xx or 9xx).");
       return;
     }
 
@@ -149,22 +151,15 @@ export default function SignupPage() {
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="signup-phone">Phone number</Label>
-          <Input
-            id="signup-phone"
-            name="phoneNumber"
-            type="tel"
-            autoComplete="tel"
-            placeholder="Phone number"
-            className="h-11"
-            value={phoneNumber}
-            onChange={(e) => setPhoneNumber(e.target.value)}
-            disabled={submitting}
-            required
-            minLength={8}
-          />
-        </div>
+        <EthiopiaPhoneField
+          id="signup-phone"
+          label="Phone number"
+          name="phoneNumber"
+          value={phoneNumber}
+          onNationalChange={setPhoneNumber}
+          disabled={submitting}
+          required
+        />
 
         <div className="space-y-2">
           <Label htmlFor="signup-password">Password</Label>

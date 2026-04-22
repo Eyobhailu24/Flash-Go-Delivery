@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 import { defaultHomePathForRole } from "@/lib/role-access";
 import { AuthApiError } from "@/lib/auth-api";
+import { isValidEthiopiaE164 } from "@/lib/ethiopia-phone";
 
 export function VerifyOtpForm() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export function VerifyOtpForm() {
     e.preventDefault();
     setError(null);
     setInfo(null);
-    if (normalizedPhone.length < 8) {
+    if (!isValidEthiopiaE164(normalizedPhone)) {
       setError("Invalid phone. Start again from sign up.");
       return;
     }
@@ -59,7 +60,7 @@ export function VerifyOtpForm() {
   async function onResend() {
     setError(null);
     setInfo(null);
-    if (normalizedPhone.length < 8) {
+    if (!isValidEthiopiaE164(normalizedPhone)) {
       setError("Invalid phone. Start again from sign up.");
       return;
     }
@@ -86,7 +87,7 @@ export function VerifyOtpForm() {
     return null;
   }
 
-  if (normalizedPhone.length < 8) {
+  if (!isValidEthiopiaE164(normalizedPhone)) {
     return (
       <div className="space-y-6">
         <AuthBrand />

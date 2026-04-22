@@ -6,8 +6,10 @@ import { useEffect, useState } from "react";
 import { AuthBrand } from "@/components/auth/auth-brand";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { EthiopiaPhoneField } from "@/components/auth/ethiopia-phone-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toEthiopiaE164 } from "@/lib/ethiopia-phone";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 import { defaultHomePathForRole } from "@/lib/role-access";
@@ -34,9 +36,9 @@ export default function ResetPasswordPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const phone = phoneNumber.replace(/\s+/g, "");
-    if (phone.length < 8) {
-      setError("Enter a valid phone number.");
+    const phone = toEthiopiaE164(phoneNumber);
+    if (!phone) {
+      setError("Enter all nine digits of your mobile number after +251 (e.g. 7xx or 9xx).");
       return;
     }
     if (otp.trim().length < 4) {
@@ -96,21 +98,14 @@ export default function ResetPasswordPage() {
           </Alert>
         ) : null}
 
-        <div className="space-y-2">
-          <Label htmlFor="reset-phone">Phone number</Label>
-          <Input
-            id="reset-phone"
-            type="tel"
-            autoComplete="tel"
-            placeholder="Phone number"
-            className="h-11"
-            value={phoneNumber}
-            onChange={(e) => setPhoneNumber(e.target.value)}
-            disabled={submitting}
-            required
-            minLength={8}
-          />
-        </div>
+        <EthiopiaPhoneField
+          id="reset-phone"
+          label="Phone number"
+          value={phoneNumber}
+          onNationalChange={setPhoneNumber}
+          disabled={submitting}
+          required
+        />
 
         <div className="space-y-2">
           <Label htmlFor="reset-otp">Reset code</Label>

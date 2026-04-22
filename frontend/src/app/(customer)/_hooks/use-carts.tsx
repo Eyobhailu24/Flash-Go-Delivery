@@ -59,6 +59,9 @@ export async function fetchCarts(
   const res = await authFetch(
     `/carts${q.toString() ? `?${q.toString()}` : ""}`,
   );
+  if (res.status === 401) {
+    return [];
+  }
   const data = await readAuthJson<CartListResponse>(res);
   return data.carts;
 }

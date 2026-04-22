@@ -6,8 +6,13 @@ import { CustomerTopNavbar } from "@/components/customer/customer-top-navbar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EthiopiaPhoneField } from "@/components/auth/ethiopia-phone-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  nationalDigitsFromStoredPhone,
+  toEthiopiaE164,
+} from "@/lib/ethiopia-phone";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 import { authFetch, readAuthJson } from "@/lib/auth-api";
@@ -76,19 +81,25 @@ export default function CustomerProfilePage() {
     if (!user) return;
     setFullName(user.fullName);
     setEmail(user.email);
-    setPhoneNumber(user.phoneNumber ?? "");
+    setPhoneNumber(nationalDigitsFromStoredPhone(user.phoneNumber));
   }, [user]);
 
   const saveAccount = async () => {
     setSavingAccount(true);
     setError(null);
+    const fullPhone = toEthiopiaE164(phoneNumber);
+    if (!fullPhone) {
+      setError("Enter all nine digits of your mobile number after +251 (e.g. 7xx or 9xx).");
+      setSavingAccount(false);
+      return;
+    }
     try {
       const response = await authFetch("/auth/me", {
         method: "PATCH",
         body: JSON.stringify({
           fullName: fullName.trim(),
           email: email.trim(),
-          phoneNumber: phoneNumber.trim(),
+          phoneNumber: fullPhone,
         }),
       });
       await readAuthJson<{ user: { id: string } }>(response);
@@ -199,15 +210,12 @@ export default function CustomerProfilePage() {
                 className="h-11"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone number</Label>
-              <Input
-                id="phone"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                className="h-11"
-              />
-            </div>
+            <EthiopiaPhoneField
+              id="phone"
+              label="Phone number"
+              value={phoneNumber}
+              onNationalChange={setPhoneNumber}
+            />
             <div className="flex items-center gap-2">
               <Button
                 type="button"
