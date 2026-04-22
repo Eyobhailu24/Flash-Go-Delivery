@@ -10,44 +10,15 @@ import jwt from 'jsonwebtoken';
 import { createHash, randomInt } from 'node:crypto';
 import { z } from 'zod';
 import { db } from '../db.js';
-import { customerProfile, otpVerifications, users } from '../schema.js';
-
-const ETHIOPIA_PHONE_E164 = /^\+251\d{9}$/;
-
-function normalizePhone(phoneNumber: string): string {
-  const trimmed = phoneNumber.replace(/\s+/g, '');
-
-  if (ETHIOPIA_PHONE_E164.test(trimmed)) {
-    return trimmed;
-  }
-
-  if (trimmed.startsWith('+')) {
-    const restDigits = trimmed.slice(1).replace(/\D/g, '');
-    if (restDigits.startsWith('251') && restDigits.length >= 12) {
-      return `+${restDigits.slice(0, 12)}`;
-    }
-  }
-
-  const digits = trimmed.replace(/\D/g, '');
-
-  if (digits.startsWith('251') && digits.length >= 12) {
-    return `+${digits.slice(0, 12)}`;
-  }
-
-  if (digits.startsWith('0') && digits.length === 10) {
-    return `+251${digits.slice(1)}`;
-  }
-
-  if (digits.length === 9) {
-    return `+251${digits}`;
-  }
-
-  if (digits.length === 12 && digits.startsWith('251')) {
-    return `+${digits}`;
-  }
-
-  return trimmed;
-}
+import {
+  ETHIOPIA_PHONE_E164,
+  normalizePhone,
+} from '../lib/ethiopia-phone.js';
+import {
+  customerProfile,
+  otpVerifications,
+  users,
+} from '../schema.js';
 
 const ethiopiaPhoneSchema = z
   .string()
@@ -117,7 +88,9 @@ const upsertMyCustomerProfileSchema = z
         }),
       )
       .optional(),
-    preferences: z.record(z.string(), z.unknown()).optional(),
+    preferences: z
+      .record(z.string(), z.unknown())
+      .optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: 'At least one field is required.',
@@ -296,12 +269,16 @@ async function issueSignupOtpWithCooldown(
     if (elapsedSeconds < otpResendCooldownSeconds) {
       return {
         sent: false,
-        waitSeconds: otpResendCooldownSeconds - elapsedSeconds,
+        waitSeconds:
+          otpResendCooldownSeconds - elapsedSeconds,
       };
     }
   }
 
-  const otp = await createOtp(phoneNumber, 'signup_verification');
+  const otp = await createOtp(
+    phoneNumber,
+    'signup_verification',
+  );
   await sendOtpSms(phoneNumber, otp);
   return { sent: true, waitSeconds: 0 };
 }
@@ -546,7 +523,8 @@ export const login = async (c: Context) => {
   }
 
   if (!user.isVerified) {
-    const otpResult = await issueSignupOtpWithCooldown(phoneNumber);
+    const otpResult =
+      await issueSignupOtpWithCooldown(phoneNumber);
     return c.json(
       {
         message: otpResult.sent
@@ -581,7 +559,9 @@ export const login = async (c: Context) => {
 };
 
 export const resendSignupOtp = async (c: Context) => {
-  const parsed = forgotPasswordSchema.safeParse(await c.req.json());
+  const parsed = forgotPasswordSchema.safeParse(
+    await c.req.json(),
+  );
   if (!parsed.success) {
     return c.json(
       { message: 'Invalid request payload.' },
@@ -589,7 +569,9 @@ export const resendSignupOtp = async (c: Context) => {
     );
   }
 
-  const phoneNumber = normalizePhone(parsed.data.phoneNumber);
+  const phoneNumber = normalizePhone(
+    parsed.data.phoneNumber,
+  );
   const result = await db
     .select({
       id: users.id,
@@ -603,10 +585,14 @@ export const resendSignupOtp = async (c: Context) => {
     return c.json({ message: 'User not found.' }, 404);
   }
   if (user.isVerified) {
-    return c.json({ message: 'Phone number is already verified.' }, 409);
+    return c.json(
+      { message: 'Phone number is already verified.' },
+      409,
+    );
   }
 
-  const otpResult = await issueSignupOtpWithCooldown(phoneNumber);
+  const otpResult =
+    await issueSignupOtpWithCooldown(phoneNumber);
   return c.json({
     message: otpResult.sent
       ? 'OTP sent to your phone.'
@@ -788,12 +774,20 @@ export const updateMe = async (c: Context) => {
     return c.json({ message: 'Unauthorized.' }, 401);
   }
 
-  const parsed = updateMeSchema.safeParse(await c.req.json());
+  const parsed = updateMeSchema.safeParse(
+    await c.req.json(),
+  );
   if (!parsed.success) {
-    return c.json({ message: 'Invalid request payload.' }, 400);
+    return c.json(
+      { message: 'Invalid request payload.' },
+      400,
+    );
   }
   if (Object.keys(parsed.data).length === 0) {
-    return c.json({ message: 'At least one field is required.' }, 400);
+    return c.json(
+      { message: 'At least one field is required.' },
+      400,
+    );
   }
 
   const patch: Partial<typeof users.$inferInsert> = {};
@@ -806,7 +800,10 @@ export const updateMe = async (c: Context) => {
   if (parsed.data.phoneNumber !== undefined) {
     const raw = parsed.data.phoneNumber.trim();
     if (!raw) {
-      return c.json({ message: 'Phone number cannot be empty.' }, 400);
+      return c.json(
+        { message: 'Phone number cannot be empty.' },
+        400,
+      );
     }
     const normalized = normalizePhone(raw);
     if (!ETHIOPIA_PHONE_E164.test(normalized)) {
@@ -828,7 +825,10 @@ export const updateMe = async (c: Context) => {
       .where(eq(users.email, patch.email))
       .limit(1);
     if (emailOwner[0] && emailOwner[0].id !== auth.sub) {
-      return c.json({ message: 'Email is already registered.' }, 409);
+      return c.json(
+        { message: 'Email is already registered.' },
+        409,
+      );
     }
   }
 
@@ -880,7 +880,9 @@ export const getMyCustomerProfile = async (c: Context) => {
   return c.json({ profile: rows[0] ?? null });
 };
 
-export const upsertMyCustomerProfile = async (c: Context) => {
+export const upsertMyCustomerProfile = async (
+  c: Context,
+) => {
   const auth = requireAuth(c);
   if (!auth) {
     return c.json({ message: 'Unauthorized.' }, 401);
@@ -890,7 +892,10 @@ export const upsertMyCustomerProfile = async (c: Context) => {
     await c.req.json(),
   );
   if (!parsed.success) {
-    return c.json({ message: 'Invalid request payload.' }, 400);
+    return c.json(
+      { message: 'Invalid request payload.' },
+      400,
+    );
   }
 
   const existing = await db
@@ -899,7 +904,9 @@ export const upsertMyCustomerProfile = async (c: Context) => {
     .where(eq(customerProfile.userId, auth.sub))
     .limit(1);
 
-  const patch: Partial<typeof customerProfile.$inferInsert> = {};
+  const patch: Partial<
+    typeof customerProfile.$inferInsert
+  > = {};
   if (parsed.data.addresses !== undefined) {
     patch.addresses = parsed.data.addresses;
   }

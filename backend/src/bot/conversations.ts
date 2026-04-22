@@ -1,8 +1,8 @@
 import { type Conversation, type ConversationFlavor } from "@grammyjs/conversations";
-import { Context, Keyboard } from "grammy";
+import { Context } from "grammy";
 import { t, type Language } from "./translate.js";
 import { db } from "../db.js";
-import { users, customerProfile, orders, payments, orderDriverOffers, driverProfile, driverLocations, notifications } from "../schema.js";
+import { users, customerProfile, orders, payments, orderDriverOffers, driverProfile, driverLocations } from "../schema.js";
 import { eq, and } from "drizzle-orm";
 
 export type MyContext = Context & ConversationFlavor<Context> & {
@@ -16,6 +16,8 @@ export type MyContext = Context & ConversationFlavor<Context> & {
       address?: string;
       phone?: string;
     };
+    /** Ordered business `user_id`s after last food "near you" list (for reply 1, 2, …). */
+    foodPartnerIds?: string[];
   };
 };
 
@@ -28,29 +30,6 @@ function haversineDistanceKm(from: { lat: number; lng: number }, to: { lat: numb
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 const computeDeliveryFee = (dist: number) => 50 + Math.max(0, Math.ceil(dist - 1)) * 15;
-
-export async function signUpConversation(conversation: Conversation<MyContext, MyContext>, ctx: MyContext) {
-  const lang = ctx.session.language || 'en';
-
-  await ctx.reply(await t("Please enter your full name:", lang));
-  const { message: nameMsg } = await conversation.wait();
-  const name = nameMsg?.text || "Anonymous";
-
-  await ctx.reply(await t("Please enter your email:", lang));
-  const { message: emailMsg } = await conversation.wait();
-  const email = emailMsg?.text || `user_${Date.now()}@example.com`;
-
-  await ctx.reply(await t("Please enter your address:", lang));
-  const { message: addressMsg } = await conversation.wait();
-  const address = addressMsg?.text || "";
-
-  // For Bot registration, we assume phone number will be shared later or already known
-  // Here we just prepare the data. The actual insertion happens once we get the contact.
-  ctx.session.user = { name, email, address };
-  
-  const keyboard = new Keyboard().requestContact(await t("Share Phone Number to complete registration", lang)).resized();
-  await ctx.reply(await t("To complete registration, please share your phone number.", lang), { reply_markup: keyboard });
-}
 
 export async function packageDeliveryConversation(conversation: Conversation<MyContext, MyContext>, ctx: MyContext) {
   const lang = ctx.session.language || 'en';
