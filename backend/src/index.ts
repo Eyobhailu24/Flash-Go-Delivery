@@ -21,13 +21,15 @@ import './bot/index.js'; // Start the Telegram bot
 const app = new Hono();
 
 const frontendOrigin = (
-  process.env.FRONTEND_URL ??
-  'http://localhost:3000'
+  process.env.FRONTEND_URL ?? 'http://localhost:3000'
 ).replace(/\/$/, '');
 app.use(
   '*',
   cors({
-    origin: frontendOrigin,
+    origin: [
+      'http://localhost:3000',
+      'https://flash-go-delivery.up.railway.app',
+    ],
     credentials: true,
     allowHeaders: ['Content-Type', 'Authorization'],
     allowMethods: [
@@ -55,12 +57,17 @@ app.get('/uploads/*', async (c) => {
   if (!rel || rel.includes('..')) {
     return c.notFound();
   }
-  const parts = rel.split('/').filter((p) => p && p !== '.' && p !== '..');
+  const parts = rel
+    .split('/')
+    .filter((p) => p && p !== '.' && p !== '..');
   if (parts.length === 0) return c.notFound();
   const abs = join(uploadRoot(), ...parts);
   try {
     const data = await readFile(abs);
-    const ext = parts[parts.length - 1]?.split('.').pop()?.toLowerCase();
+    const ext = parts[parts.length - 1]
+      ?.split('.')
+      .pop()
+      ?.toLowerCase();
     const mime =
       ext === 'png'
         ? 'image/png'
