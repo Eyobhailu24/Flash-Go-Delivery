@@ -117,7 +117,6 @@ const refreshExpiry =
 
 const cookieSecure =
   (process.env.COOKIE_SECURE ?? 'false') === 'true';
-const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
 const otpLength = Number(process.env.OTP_LENGTH ?? 6);
 const otpExpiryMinutes = Number(
   process.env.OTP_EXPIRY_MINUTES ?? 5,
@@ -347,7 +346,6 @@ function setAuthCookies(
     httpOnly: true,
     secure: cookieSecure,
     sameSite,
-    domain: cookieDomain,
     path: '/',
     maxAge: parseDurationToSeconds(accessExpiry),
   });
@@ -355,7 +353,6 @@ function setAuthCookies(
     httpOnly: true,
     secure: cookieSecure,
     sameSite,
-    domain: cookieDomain,
     path: '/',
     maxAge: parseDurationToSeconds(refreshExpiry),
   });
@@ -725,11 +722,9 @@ export const resetPassword = async (c: Context) => {
 export const logout = async (c: Context) => {
   deleteCookie(c, 'access_token', {
     path: '/',
-    domain: cookieDomain,
   });
   deleteCookie(c, 'refresh_token', {
     path: '/',
-    domain: cookieDomain,
   });
   return c.json({ message: 'Logged out successfully.' });
 };
