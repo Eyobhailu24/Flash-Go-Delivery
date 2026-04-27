@@ -62,6 +62,7 @@ function formatRelativeNotificationTime(iso: string): string {
 
 type CustomerTopNavbarProps = {
   firstName: string;
+  todayLabel?: string;
   userAddress: string;
   cartItems?: CartItemView[];
   cartTotalQuantity?: number;
@@ -74,6 +75,7 @@ type CustomerTopNavbarProps = {
 
 export function CustomerTopNavbar({
   firstName,
+  todayLabel,
   userAddress,
   cartItems = [],
   cartTotalQuantity = 0,
@@ -129,6 +131,11 @@ export function CustomerTopNavbar({
           placeholder="Search something"
           className="h-11 w-full max-w-[240px] rounded-full border-0 bg-orange-50 px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-0 md:max-w-[320px]"
         />
+        {todayLabel ? (
+          <span className="hidden rounded-full bg-orange-50 px-3 py-2 text-xs text-gray-500 shadow-sm lg:inline-flex">
+            {todayLabel}
+          </span>
+        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2 md:gap-3">
         <Button
