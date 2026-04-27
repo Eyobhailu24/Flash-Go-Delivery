@@ -20,8 +20,11 @@ import './bot/index.js'; // Start the Telegram bot
 
 const app = new Hono();
 
-const frontendOrigin =
-  process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000';
+const frontendOrigin = (
+  process.env.FRONTEND_URL ??
+  process.env.FRONTEND_ORIGIN ??
+  'http://localhost:3000'
+).replace(/\/$/, '');
 app.use(
   '*',
   cors({

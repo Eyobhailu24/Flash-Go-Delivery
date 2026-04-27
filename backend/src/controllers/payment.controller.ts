@@ -46,7 +46,9 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
 
 function toPaymentStatusRedirect(status: "success" | "failed", txRef: string): string {
   const frontendOrigin =
-    process.env.FRONTEND_ORIGIN ?? "http://localhost:3000";
+    process.env.FRONTEND_URL ??
+    process.env.FRONTEND_ORIGIN ??
+    "http://localhost:3000";
   return `${frontendOrigin.replace(/\/$/, "")}/payment-status?status=${status}&tx_ref=${encodeURIComponent(txRef)}`;
 }
 
@@ -103,7 +105,9 @@ export const initializeTelebirrPayment = async (c: Context<PaymentEnv>) => {
   const chapaBaseUrl =
     process.env.CHAPA_BASE_URL ?? "https://api.chapa.co/v1";
   const backendBaseUrl =
-    process.env.BACKEND_BASE_URL ?? "http://localhost:3001";
+    process.env.BACKEND_URL ??
+    process.env.BACKEND_BASE_URL ??
+    "http://localhost:3001";
   const txRef = randomUUID().replace(/-/g, "");
   const { firstName, lastName } = splitName(row.customer.fullName);
 

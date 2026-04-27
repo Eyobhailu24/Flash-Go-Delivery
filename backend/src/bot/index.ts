@@ -11,10 +11,11 @@ import dotenv from "dotenv";
 dotenv.config();
 
 function webOrigin(): string {
-  return (process.env.FRONTEND_ORIGIN ?? "http://localhost:3000").replace(
-    /\/$/,
-    "",
-  );
+  return (
+    process.env.FRONTEND_URL ??
+    process.env.FRONTEND_ORIGIN ??
+    "http://localhost:3000"
+  ).replace(/\/$/, "");
 }
 
 function webSignupUrl(): string {
@@ -64,7 +65,7 @@ function formatAddress(
 /**
  * Telegram rejects many `http://` URLs for inline keyboard buttons, including
  * `http://localhost` (400: Wrong HTTP URL). Use HTTPS + a public host in
- * FRONTEND_ORIGIN for tappable buttons, or the bot falls back to plain links.
+ * FRONTEND_URL for tappable buttons, or the bot falls back to plain links.
  */
 function telegramAllowsInlineWebUrl(url: string): boolean {
   try {
@@ -105,7 +106,7 @@ async function replyWithWebLinks(
     text +=
       "\n\n" +
       (await t(
-        "Open these in your browser. For tappable buttons in Telegram, set FRONTEND_ORIGIN to an HTTPS URL (e.g. your live site or ngrok).",
+        "Open these in your browser. For tappable buttons in Telegram, set FRONTEND_URL to an HTTPS URL (e.g. your live site or ngrok).",
         lang,
       ));
     for (const pair of pairs) {

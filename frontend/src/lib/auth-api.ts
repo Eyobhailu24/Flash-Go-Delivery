@@ -1,6 +1,28 @@
+function normalizeBaseUrl(raw: string, name: string): string {
+  const value = raw.trim().replace(/\/$/, "");
+  try {
+    new URL(value);
+    return value;
+  } catch {
+    throw new Error(`Invalid ${name}: "${raw}"`);
+  }
+}
+
+export function getFrontendBaseUrl(): string {
+  const raw =
+    process.env.NEXT_PUBLIC_FRONTEND_URL ??
+    process.env.FRONTEND_URL ??
+    "http://localhost:3000";
+  return normalizeBaseUrl(raw, "FRONTEND_URL");
+}
+
 export function getApiBaseUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-  return raw.replace(/\/$/, "");
+  const raw =
+    process.env.NEXT_PUBLIC_BACKEND_URL ??
+    process.env.BACKEND_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    "http://localhost:3001";
+  return normalizeBaseUrl(raw, "BACKEND_URL");
 }
 
 export class AuthApiError extends Error {
