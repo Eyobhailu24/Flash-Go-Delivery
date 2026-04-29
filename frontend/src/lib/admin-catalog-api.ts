@@ -401,9 +401,10 @@ export async function deleteCategoryItem(id: string): Promise<void> {
   await readAuthJson<{ message: string; id: string }>(res);
 }
 
-/** Absolute URL for a stored upload path such as `/uploads/category-items/…`. */
+/** Absolute URL for Cloudinary HTTPS URLs or legacy `/uploads/…` paths. */
 export function catalogItemImageUrl(imagePath: string | null): string | null {
   if (!imagePath) return null;
+  if (/^https?:\/\//i.test(imagePath)) return imagePath;
   const base = getApiBaseUrl();
   const path = imagePath.startsWith("/") ? imagePath : `/${imagePath}`;
   return `${base}${path}`;
@@ -413,6 +414,7 @@ export function catalogCategoryNameImageUrl(
   imagePath: string | null,
 ): string | null {
   if (!imagePath) return null;
+  if (/^https?:\/\//i.test(imagePath)) return imagePath;
   const base = getApiBaseUrl();
   const path = imagePath.startsWith("/") ? imagePath : `/${imagePath}`;
   return `${base}${path}`;

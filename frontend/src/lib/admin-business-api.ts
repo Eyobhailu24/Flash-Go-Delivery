@@ -97,6 +97,7 @@ export async function fetchBusinessProfiles(
 
 export function businessProfileImageUrl(imagePath: string | null): string | null {
   if (!imagePath) return null;
+  if (/^https?:\/\//i.test(imagePath)) return imagePath;
   const base = getApiBaseUrl();
   const path = imagePath.startsWith("/") ? imagePath : `/${imagePath}`;
   return `${base}${path}`;
