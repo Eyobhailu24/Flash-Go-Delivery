@@ -1,13 +1,16 @@
+import Image from "next/image";
+
 export function AuthBrand() {
   return (
-    <div className="flex items-center justify-center gap-2">
-      <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground shadow-sm">
-        F
-      </span>
-      <div className="text-left leading-tight">
-        <p className="text-lg font-semibold tracking-tight">Flash Go</p>
-        <p className="text-xs text-muted-foreground">Delivery</p>
-      </div>
+    <div className="flex items-center justify-center">
+      <Image
+        src="/flashlogo.png"
+        alt="FlashGo"
+        width={170}
+        height={68}
+        className="h-12 w-auto object-contain sm:h-14"
+        priority
+      />
     </div>
   );
 }

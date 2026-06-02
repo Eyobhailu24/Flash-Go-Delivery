@@ -1,6 +1,7 @@
 "use client";
 
 import { catalogCategoryNameImageUrl } from "@/lib/admin-catalog-api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Category = {
   id: string;
@@ -10,21 +11,36 @@ type Category = {
 
 type CustomerCategoriesSectionProps = {
   categories: Category[];
+  isLoading?: boolean;
   selectedCategoryId: string | null;
   onSelectCategory: (categoryId: string) => void;
 };
 
 export function CustomerCategoriesSection({
   categories,
+  isLoading = false,
   selectedCategoryId,
   onSelectCategory,
 }: CustomerCategoriesSectionProps) {
+  const categoryPlaceholders = Array.from({ length: 6 });
+
   return (
     <section className="space-y-4">
       <h2 className="text-[32px] leading-none font-semibold text-gray-900">
         Categories
       </h2>
       <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {isLoading
+          ? categoryPlaceholders.map((_, index) => (
+              <div
+                key={`category-skeleton-${index}`}
+                className="flex min-w-24 shrink-0 flex-col items-center gap-3 rounded-2xl bg-card p-4 shadow-md"
+              >
+                <Skeleton className="size-10 rounded-full" />
+                <Skeleton className="h-4 w-14 rounded-full" />
+              </div>
+            ))
+          : null}
         {categories.map((category) => {
           const active = selectedCategoryId === category.id;
           const categoryImage = catalogCategoryNameImageUrl(

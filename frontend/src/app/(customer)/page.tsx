@@ -43,10 +43,12 @@ export default function CustomerHomePage() {
   const [categories, setCategories] = useState<
     Array<{ id: string; name: string; imagePath: string | null }>
   >([]);
+  const [isCategoriesLoading, setIsCategoriesLoading] = useState(false);
   const selectedCategoryId = null;
   const [menuItems, setMenuItems] = useState<CategoryItem[]>([]);
   const [isMenuLoading, setIsMenuLoading] = useState(false);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [isRestaurantsLoading, setIsRestaurantsLoading] = useState(false);
   const [activeRestaurantIndex, setActiveRestaurantIndex] = useState(0);
   const restaurantScrollRef = useRef<HTMLDivElement | null>(null);
   const {
@@ -75,6 +77,7 @@ export default function CustomerHomePage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      setIsCategoriesLoading(true);
       try {
         const response = await fetchPublicCategoryNames({
           limit: 200,
@@ -90,6 +93,10 @@ export default function CustomerHomePage() {
       } catch {
         if (!cancelled) {
           setCategories([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCategoriesLoading(false);
         }
       }
     })();
@@ -114,6 +121,7 @@ export default function CustomerHomePage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      setIsRestaurantsLoading(true);
       try {
         const response = await fetchPublicApprovedBusinessProfiles({
           limit: 20,
@@ -148,6 +156,8 @@ export default function CustomerHomePage() {
         setRestaurants(next);
       } catch {
         if (!cancelled) setRestaurants([]);
+      } finally {
+        if (!cancelled) setIsRestaurantsLoading(false);
       }
     })();
     return () => {
@@ -248,6 +258,7 @@ export default function CustomerHomePage() {
 
       <CustomerCategoriesSection
         categories={categories}
+        isLoading={isCategoriesLoading}
         selectedCategoryId={selectedCategoryId}
         onSelectCategory={handleSelectCategory}
       />
@@ -276,6 +287,24 @@ export default function CustomerHomePage() {
           className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <div className="flex snap-x snap-mandatory gap-4">
+            {isRestaurantsLoading
+              ? Array.from({ length: 3 }).map((_, index) => (
+                  <Card
+                    key={`restaurant-skeleton-${index}`}
+                    data-restaurant-card
+                    className="min-w-[260px] shrink-0 snap-start overflow-hidden rounded-2xl border-none bg-card shadow-md"
+                  >
+                    <CardContent className="flex items-center gap-4 p-4">
+                      <Skeleton className="size-16 shrink-0 rounded-full" />
+                      <div className="w-full space-y-2">
+                        <Skeleton className="h-4 w-2/3" />
+                        <Skeleton className="h-3 w-4/5" />
+                        <Skeleton className="h-3 w-1/3" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              : null}
             {restaurants.map((restaurant, index) => (
               <Card
                 key={restaurant.id}
@@ -329,18 +358,19 @@ export default function CustomerHomePage() {
             ))}
           </div>
         </div>
-        {restaurants.length === 0 ? (
+        {!isRestaurantsLoading && restaurants.length === 0 ? (
           <p className="text-sm text-muted-foreground">No nearby restaurants available yet.</p>
         ) : null}
         <div className="flex items-center justify-center gap-3 pt-1">
-          {restaurants.map((restaurant, index) => {
+          {(isRestaurantsLoading ? Array.from({ length: 3 }) : restaurants).map((_, index) => {
             const isActive = index === activeRestaurantIndex;
             return (
               <button
-                key={restaurant.id}
+                key={`restaurant-dot-${index}`}
                 type="button"
                 onClick={() => scrollToRestaurantCard(index)}
                 aria-label={`Go to restaurant ${index + 1}`}
+                disabled={isRestaurantsLoading}
                 className={`rounded-full border transition-all ${
                   isActive
                     ? "size-4 border-orange-400 bg-orange-400 shadow-sm shadow-orange-200"

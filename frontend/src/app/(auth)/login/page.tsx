@@ -70,17 +70,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-7">
       <AuthBrand />
 
       <div className="space-y-2 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Log in to your account</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="text-3xl font-bold tracking-tight text-gray-900">Welcome back</h1>
+        <p className="text-sm text-gray-500">
           Welcome back! Sign in with your phone number and password.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form onSubmit={onSubmit} className="space-y-5">
         {error ? (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
@@ -105,7 +105,7 @@ export default function LoginPage() {
             type="password"
             autoComplete="current-password"
             placeholder="Password"
-            className="h-11"
+            className="h-11 rounded-xl border-orange-100 bg-orange-50/30 focus-visible:ring-orange-300"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={submitting}
@@ -113,14 +113,18 @@ export default function LoginPage() {
           />
         </div>
 
-        <Button type="submit" className="h-11 w-full text-base" disabled={submitting}>
+        <Button
+          type="submit"
+          className="h-11 w-full rounded-xl bg-linear-to-r from-orange-500 to-amber-500 text-base text-white shadow-md shadow-orange-200 transition-all hover:from-orange-600 hover:to-amber-600 hover:shadow-lg hover:shadow-orange-300/60"
+          disabled={submitting}
+        >
           {submitting ? <Spinner className="size-5" /> : "Log in"}
         </Button>
       </form>
 
-      <p className="text-center text-sm text-muted-foreground">
+      <p className="text-center text-sm text-gray-500">
         Don&apos;t have an account?{" "}
-        <Link href="/signup" className="font-medium text-primary hover:underline">
+        <Link href="/signup" className="font-semibold text-orange-500 hover:text-orange-600 hover:underline">
           Sign up
         </Link>
       </p>

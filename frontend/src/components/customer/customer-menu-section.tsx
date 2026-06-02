@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type CustomerMenuSectionProps = {
   menuItems: CategoryItem[];
@@ -31,7 +31,8 @@ export function CustomerMenuSection({
   const menuScrollRef = useRef<HTMLDivElement | null>(null);
   const [activeMenuIndex, setActiveMenuIndex] = useState(0);
   const displayedMenuItems = menuItems.slice(0, 20);
-  const menuCardsCount = displayedMenuItems.length + 1;
+  const menuPlaceholders = Array.from({ length: 4 });
+  const menuCardsCount = isLoading ? menuPlaceholders.length : displayedMenuItems.length + 1;
 
   const handleMenuScroll = () => {
     if (!menuScrollRef.current) return;
@@ -68,7 +69,28 @@ export function CustomerMenuSection({
         className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="flex snap-x snap-mandatory gap-4">
-          {displayedMenuItems.map((item) => (
+          {isLoading
+            ? menuPlaceholders.map((_, index) => (
+                <Card
+                  key={`menu-skeleton-${index}`}
+                  data-menu-card
+                  className="min-w-[220px] shrink-0 snap-start overflow-hidden rounded-2xl border-none bg-card py-0 shadow-md"
+                >
+                  <CardContent className="space-y-3 p-0">
+                    <Skeleton className="h-32 w-full rounded-none" />
+                    <div className="space-y-2 px-2.5 pb-3">
+                      <Skeleton className="h-4 w-4/5" />
+                      <Skeleton className="h-3 w-2/3" />
+                      <div className="flex items-center justify-between pt-1">
+                        <Skeleton className="h-5 w-20" />
+                        <Skeleton className="size-9 rounded-full" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            : null}
+          {!isLoading ? displayedMenuItems.map((item) => (
             <Card
               key={item.id}
               data-menu-card
@@ -143,25 +165,22 @@ export function CustomerMenuSection({
                 </div>
               </CardContent>
             </Card>
-          ))}
-          <Card
-            data-menu-card
-            className="min-w-[220px] shrink-0 snap-start overflow-hidden rounded-2xl border-none bg-orange-500 text-white shadow-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:bg-orange-400 hover:shadow-xl hover:shadow-orange-200/70"
-          >
-            <CardContent className="flex h-full min-h-[184px] flex-col items-center justify-center gap-3 p-4 text-center">
-              <p className="text-xl font-bold">View All Menu</p>
-              <Button asChild className="rounded-xl bg-white text-orange-500 hover:bg-orange-50">
-                <Link href="/menu">View All</Link>
-              </Button>
-            </CardContent>
-          </Card>
+          )) : null}
+          {!isLoading ? (
+            <Card
+              data-menu-card
+              className="min-w-[220px] shrink-0 snap-start overflow-hidden rounded-2xl border-none bg-orange-500 text-white shadow-md transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01] hover:bg-orange-400 hover:shadow-xl hover:shadow-orange-200/70"
+            >
+              <CardContent className="flex h-full min-h-[184px] flex-col items-center justify-center gap-3 p-4 text-center">
+                <p className="text-xl font-bold">View All Menu</p>
+                <Button asChild className="rounded-xl bg-white text-orange-500 hover:bg-orange-50">
+                  <Link href="/menu">View All</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </div>
-      {isLoading && (
-        <div className="flex items-center justify-center py-2">
-          <Spinner className="size-5 text-muted-foreground" />
-        </div>
-      )}
       <div className="flex items-center justify-center gap-3 pt-1">
         {Array.from({ length: menuCardsCount }).map((_, index) => {
           const isActive = index === activeMenuIndex;
