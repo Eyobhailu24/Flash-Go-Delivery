@@ -291,9 +291,22 @@ export default function CustomerTrackOrderDetailPage() {
                   ) : null}
                   {selectedOrder.driver ? (
                     <>
-                      <p className="mt-1 font-semibold text-gray-800">
-                        {selectedOrder.driver.fullName}
-                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <p className="font-semibold text-gray-800">
+                          {selectedOrder.driver.fullName}
+                        </p>
+                        {typeof selectedOrder.driver.rating === "number" &&
+                        selectedOrder.driver.rating > 0 ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
+                            <Star className="size-3.5 fill-orange-500 text-orange-500" />
+                            {selectedOrder.driver.rating.toFixed(1)}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-gray-500">
+                            No ratings yet
+                          </span>
+                        )}
+                      </div>
                       <p className="mt-1 text-xs text-gray-500">
                         {selectedOrder.driver.phoneNumber ?? "Phone unavailable"}
                       </p>

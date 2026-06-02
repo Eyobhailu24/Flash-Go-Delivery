@@ -18,10 +18,19 @@ export type DriverOffer = {
   business: {
     name: string;
     address: string | null;
+    latitude: number | null;
+    longitude: number | null;
   } | null;
   customer: {
     address: string;
+    latitude: number | null;
+    longitude: number | null;
   };
+  pickup: {
+    address: string;
+    latitude: number | null;
+    longitude: number | null;
+  } | null;
   items: Array<{
     orderId: string;
     productName: string;
@@ -39,10 +48,19 @@ export type DriverAssignedOrder = {
   business: {
     name: string;
     address: string | null;
+    latitude: number | null;
+    longitude: number | null;
   } | null;
   customer: {
     address: string;
+    latitude: number | null;
+    longitude: number | null;
   };
+  pickup: {
+    address: string;
+    latitude: number | null;
+    longitude: number | null;
+  } | null;
   items: Array<{
     orderId: string;
     productName: string;

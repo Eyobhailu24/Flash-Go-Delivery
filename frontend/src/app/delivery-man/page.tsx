@@ -5,7 +5,10 @@ import { BellRing, MapPin, Route, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DeliveryTopNavbar } from "@/components/delivery/delivery-top-navbar";
+import { DriverRouteMap } from "@/components/delivery/driver-route-map";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/auth-context";
 import { formatBirr } from "@/lib/currency";
 import {
   acceptDriverOffer,
@@ -18,6 +21,11 @@ import {
   type DriverAssignedOrder,
   type DriverOffer,
 } from "@/lib/driver-dispatch-api";
+
+type LatLng = {
+  latitude: number;
+  longitude: number;
+};
 
 function formatKm(value: string | null): string {
   if (!value) return "N/A";
@@ -43,6 +51,7 @@ function OfferSkeleton() {
 }
 
 export default function DeliveryManPage() {
+  const { user } = useAuth();
   const [offer, setOffer] = useState<DriverOffer | null>(null);
   const [assignedOrder, setAssignedOrder] = useState<DriverAssignedOrder | null>(null);
   const [loadingOffer, setLoadingOffer] = useState(true);
@@ -56,6 +65,7 @@ export default function DeliveryManPage() {
     "idle" | "tracking" | "unsupported" | "denied"
   >("idle");
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const firstName = user?.fullName?.split(" ")[0] ?? "Driver";
 
   useEffect(() => {
     let isMounted = true;
@@ -146,6 +156,78 @@ export default function DeliveryManPage() {
     return "Detecting location...";
   }, [locationStatus]);
 
+  const assignedPickupPoint = useMemo<LatLng | null>(() => {
+    if (!assignedOrder) return null;
+    const pickup = assignedOrder.pickup;
+    if (
+      pickup &&
+      typeof pickup.latitude === "number" &&
+      typeof pickup.longitude === "number"
+    ) {
+      return { latitude: pickup.latitude, longitude: pickup.longitude };
+    }
+    if (
+      assignedOrder.business &&
+      typeof assignedOrder.business.latitude === "number" &&
+      typeof assignedOrder.business.longitude === "number"
+    ) {
+      return {
+        latitude: assignedOrder.business.latitude,
+        longitude: assignedOrder.business.longitude,
+      };
+    }
+    return null;
+  }, [assignedOrder]);
+  const assignedDestinationPoint = useMemo<LatLng | null>(() => {
+    if (
+      !assignedOrder ||
+      typeof assignedOrder.customer.latitude !== "number" ||
+      typeof assignedOrder.customer.longitude !== "number"
+    ) {
+      return null;
+    }
+    return {
+      latitude: assignedOrder.customer.latitude,
+      longitude: assignedOrder.customer.longitude,
+    };
+  }, [assignedOrder]);
+
+  const offerPickupPoint = useMemo<LatLng | null>(() => {
+    if (!offer) return null;
+    const pickup = offer.pickup;
+    if (
+      pickup &&
+      typeof pickup.latitude === "number" &&
+      typeof pickup.longitude === "number"
+    ) {
+      return { latitude: pickup.latitude, longitude: pickup.longitude };
+    }
+    if (
+      offer.business &&
+      typeof offer.business.latitude === "number" &&
+      typeof offer.business.longitude === "number"
+    ) {
+      return {
+        latitude: offer.business.latitude,
+        longitude: offer.business.longitude,
+      };
+    }
+    return null;
+  }, [offer]);
+  const offerDestinationPoint = useMemo<LatLng | null>(() => {
+    if (
+      !offer ||
+      typeof offer.customer.latitude !== "number" ||
+      typeof offer.customer.longitude !== "number"
+    ) {
+      return null;
+    }
+    return {
+      latitude: offer.customer.latitude,
+      longitude: offer.customer.longitude,
+    };
+  }, [offer]);
+
   const handleAccept = async () => {
     if (!offer) return;
     setActionLoading("accept");
@@ -220,11 +302,15 @@ export default function DeliveryManPage() {
 
   return (
     <main className="customer-app flex min-h-screen w-full flex-col gap-6 bg-background px-4 pt-8 pb-6 md:px-6">
+      <DeliveryTopNavbar firstName={firstName} statusLabel={locationLabel} />
+
       <section className="space-y-2">
         <h1 className="text-[32px] leading-none font-semibold text-gray-900">
           Delivery dashboard
         </h1>
-        <p className="text-sm text-gray-500">{locationLabel}</p>
+        <p className="text-sm text-gray-500">
+          Incoming offers and active trips update automatically every few seconds.
+        </p>
       </section>
 
       {loadingOffer ? (
@@ -276,6 +362,14 @@ export default function DeliveryManPage() {
                 <Route className="size-4 text-orange-500" />
                 {assignedOrder.customer.address}
               </p>
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-orange-100 p-3">
+              <p className="text-xs font-semibold text-gray-500">Live route map</p>
+              <DriverRouteMap
+                pickup={assignedPickupPoint}
+                destination={assignedDestinationPoint}
+              />
             </div>
 
             <div className="grid gap-2 md:grid-cols-2">
@@ -371,6 +465,14 @@ export default function DeliveryManPage() {
               </p>
             </div>
 
+            <div className="space-y-2 rounded-xl border border-orange-100 p-3">
+              <p className="text-xs font-semibold text-gray-500">Live route map</p>
+              <DriverRouteMap
+                pickup={offerPickupPoint}
+                destination={offerDestinationPoint}
+              />
+            </div>
+
             <div className="rounded-xl border border-orange-100 p-3">
               <p className="mb-2 text-xs font-semibold text-gray-500">Items</p>
               <div className="space-y-1.5">
@@ -404,6 +506,36 @@ export default function DeliveryManPage() {
           </CardContent>
         </Card>
       )}
+
+      {assignedOrder || offer ? (
+        <section className="sticky bottom-3 z-20 mt-auto md:hidden">
+          <Card className="rounded-2xl border-none bg-white/95 shadow-xl backdrop-blur">
+            <CardContent className="space-y-3 pt-4">
+              <p className="text-xs font-semibold text-orange-600">
+                {assignedOrder ? "Current trip brief" : "Incoming offer brief"}
+              </p>
+              <div className="space-y-1">
+                <p className="text-xs text-gray-500">Pickup</p>
+                <p className="text-sm font-medium text-gray-800">
+                  {assignedOrder
+                    ? assignedOrder.pickup?.address ??
+                      assignedOrder.business?.address ??
+                      "Pickup unavailable"
+                    : offer?.pickup?.address ??
+                      offer?.business?.address ??
+                      "Pickup unavailable"}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-gray-500">Drop-off</p>
+                <p className="text-sm font-medium text-gray-800">
+                  {assignedOrder?.customer.address ?? offer?.customer.address}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
     </main>
   );
 }

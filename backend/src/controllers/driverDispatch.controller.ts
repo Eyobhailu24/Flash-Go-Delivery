@@ -27,6 +27,30 @@ const offerParamSchema = z.object({
   offerId: z.string().uuid(),
 });
 
+function pickCustomerAddress(
+  addresses:
+    | Array<{
+        label?: string;
+        address: string;
+        lat?: number;
+        lng?: number;
+        isDefault?: boolean;
+      }>
+    | null
+    | undefined,
+): { address: string; lat: number | null; lng: number | null } {
+  const candidate =
+    addresses?.find((entry) => entry.isDefault) ?? addresses?.[0] ?? null;
+  if (!candidate) {
+    return { address: "Customer address", lat: null, lng: null };
+  }
+  return {
+    address: candidate.address,
+    lat: typeof candidate.lat === "number" ? candidate.lat : null,
+    lng: typeof candidate.lng === "number" ? candidate.lng : null,
+  };
+}
+
 async function promoteNextOffer(orderId: string): Promise<void> {
   const now = new Date();
   const currentPending = await db
@@ -183,6 +207,8 @@ export const getCurrentDriverOffer = async (c: Context<DriverEnv>) => {
             userId: businessProfile.userId,
             businessName: businessProfile.businessName,
             address: businessProfile.address,
+            latitude: businessProfile.latitude,
+            longitude: businessProfile.longitude,
           })
           .from(businessProfile)
           .where(eq(businessProfile.userId, order.businessId))
@@ -207,14 +233,19 @@ export const getCurrentDriverOffer = async (c: Context<DriverEnv>) => {
   ]);
   const business = businessRows[0] ?? null;
   const customer = customerRows[0] ?? null;
-  const defaultCustomerAddress =
-    customer?.addresses?.find((entry) => entry.isDefault)?.address ??
-    customer?.addresses?.[0]?.address ??
-    "Customer address";
+  const defaultCustomerAddress = pickCustomerAddress(customer?.addresses);
+  const packageDropoffLat =
+    order.dropoffLat !== null ? Number(order.dropoffLat) : null;
+  const packageDropoffLng =
+    order.dropoffLng !== null ? Number(order.dropoffLng) : null;
+  const packagePickupLat =
+    order.pickupLat !== null ? Number(order.pickupLat) : null;
+  const packagePickupLng =
+    order.pickupLng !== null ? Number(order.pickupLng) : null;
   const customerAddress =
     order.orderType === "package"
-      ? (order.dropoffAddress ?? defaultCustomerAddress)
-      : defaultCustomerAddress;
+      ? (order.dropoffAddress ?? defaultCustomerAddress.address)
+      : defaultCustomerAddress.address;
 
   return c.json({
     offer: {
@@ -234,14 +265,26 @@ export const getCurrentDriverOffer = async (c: Context<DriverEnv>) => {
         ? {
             name: business.businessName,
             address: business.address,
+            latitude: business.latitude,
+            longitude: business.longitude,
           }
         : null,
       customer: {
         address: customerAddress,
+        latitude:
+          order.orderType === "package"
+            ? packageDropoffLat
+            : defaultCustomerAddress.lat,
+        longitude:
+          order.orderType === "package"
+            ? packageDropoffLng
+            : defaultCustomerAddress.lng,
       },
       pickup: order.pickupAddress
         ? {
             address: order.pickupAddress,
+            latitude: packagePickupLat,
+            longitude: packagePickupLng,
           }
         : null,
       items: itemRows,
@@ -398,6 +441,8 @@ export const getCurrentAssignedOrder = async (c: Context<DriverEnv>) => {
             userId: businessProfile.userId,
             businessName: businessProfile.businessName,
             address: businessProfile.address,
+            latitude: businessProfile.latitude,
+            longitude: businessProfile.longitude,
           })
           .from(businessProfile)
           .where(eq(businessProfile.userId, order.businessId))
@@ -423,14 +468,19 @@ export const getCurrentAssignedOrder = async (c: Context<DriverEnv>) => {
 
   const business = businessRows[0] ?? null;
   const customer = customerRows[0] ?? null;
-  const defaultCustomerAddress =
-    customer?.addresses?.find((entry) => entry.isDefault)?.address ??
-    customer?.addresses?.[0]?.address ??
-    "Customer address";
+  const defaultCustomerAddress = pickCustomerAddress(customer?.addresses);
+  const packageDropoffLat =
+    order.dropoffLat !== null ? Number(order.dropoffLat) : null;
+  const packageDropoffLng =
+    order.dropoffLng !== null ? Number(order.dropoffLng) : null;
+  const packagePickupLat =
+    order.pickupLat !== null ? Number(order.pickupLat) : null;
+  const packagePickupLng =
+    order.pickupLng !== null ? Number(order.pickupLng) : null;
   const customerAddress =
     order.orderType === "package"
-      ? (order.dropoffAddress ?? defaultCustomerAddress)
-      : defaultCustomerAddress;
+      ? (order.dropoffAddress ?? defaultCustomerAddress.address)
+      : defaultCustomerAddress.address;
 
   return c.json({
     order: {
@@ -444,14 +494,26 @@ export const getCurrentAssignedOrder = async (c: Context<DriverEnv>) => {
         ? {
             name: business.businessName,
             address: business.address,
+            latitude: business.latitude,
+            longitude: business.longitude,
           }
         : null,
       customer: {
         address: customerAddress,
+        latitude:
+          order.orderType === "package"
+            ? packageDropoffLat
+            : defaultCustomerAddress.lat,
+        longitude:
+          order.orderType === "package"
+            ? packageDropoffLng
+            : defaultCustomerAddress.lng,
       },
       pickup: order.pickupAddress
         ? {
             address: order.pickupAddress,
+            latitude: packagePickupLat,
+            longitude: packagePickupLng,
           }
         : null,
       items: itemRows,
