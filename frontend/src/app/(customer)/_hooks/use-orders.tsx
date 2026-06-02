@@ -40,6 +40,33 @@ type DriverFeedbackSummary = {
   createdAt: string;
 };
 
+export type CustomerOrderTracking = {
+  orderId: string;
+  status: OrderStatus;
+  orderType: "food" | "package" | "shop";
+  pickup: {
+    address: string;
+    latitude: number | null;
+    longitude: number | null;
+  };
+  destination: {
+    address: string;
+    latitude: number | null;
+    longitude: number | null;
+  };
+  driver: {
+    id: string;
+    fullName: string;
+    location: {
+      lat: number;
+      lng: number;
+      heading?: number;
+      speed?: number;
+    } | null;
+    locationUpdatedAt: string | null;
+  } | null;
+};
+
 export type CustomerOrder = {
   id: string;
   customerId: string;
@@ -98,6 +125,13 @@ async function fetchMyOrderById(orderId: string): Promise<CustomerOrderDetail> {
   return readAuthJson<CustomerOrderDetail>(response);
 }
 
+async function fetchMyOrderTracking(orderId: string): Promise<CustomerOrderTracking> {
+  const response = await authFetch(
+    `/orders/${encodeURIComponent(orderId)}/tracking`,
+  );
+  return readAuthJson<CustomerOrderTracking>(response);
+}
+
 async function postDriverFeedback(
   input: SubmitDriverFeedbackInput,
 ): Promise<{
@@ -124,6 +158,8 @@ export function useOrders() {
   );
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingTracking, setLoadingTracking] = useState(false);
+  const [tracking, setTracking] = useState<CustomerOrderTracking | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
@@ -140,6 +176,22 @@ export function useOrders() {
       throw e;
     } finally {
       setLoadingOrders(false);
+    }
+  }, []);
+
+  const loadOrderTracking = useCallback(async (orderId: string) => {
+    setLoadingTracking(true);
+    try {
+      const data = await fetchMyOrderTracking(orderId);
+      setTracking(data);
+      return data;
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Could not load live tracking.";
+      setError(message);
+      throw e;
+    } finally {
+      setLoadingTracking(false);
     }
   }, []);
 
@@ -185,23 +237,30 @@ export function useOrders() {
     () => ({
       orders,
       selectedOrder,
+      tracking,
       loadingOrders,
       loadingDetail,
+      loadingTracking,
       error,
       loadOrders,
       loadOrderById,
+      loadOrderTracking,
       submitDriverFeedback,
       setSelectedOrder,
+      setTracking,
     }),
     [
       error,
       loadOrderById,
+      loadOrderTracking,
       loadOrders,
       submitDriverFeedback,
       loadingDetail,
+      loadingTracking,
       loadingOrders,
       orders,
       selectedOrder,
+      tracking,
     ],
   );
 }

@@ -6,6 +6,7 @@ import {
   getAdminOrderById,
   getBusinessOrderById,
   getMyOrderById,
+  getMyOrderTracking,
   getMyOrders,
   listAdminOrders,
   listBusinessOrders,
@@ -46,6 +47,7 @@ adminOrders.get("/:id", getAdminOrderById);
 adminOrders.patch("/:id", patchAdminOrder);
 
 customerAdmin.route("/admin", adminOrders);
+customerAdmin.get("/:id/tracking", getMyOrderTracking);
 customerAdmin.get("/:id", getMyOrderById);
 
 orderRoutes.route("/", customerAdmin);

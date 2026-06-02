@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Clock3, MapPin, PackageCheck, Star, Truck } from "lucide-react";
 import { toast } from "sonner";
+import { CustomerOrderTrackingMap } from "@/components/customer/customer-order-tracking-map";
 import { CustomerTopNavbar } from "@/components/customer/customer-top-navbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,37 +42,6 @@ function paymentStatusLabel(status: string): string {
   return status.replace("_", " ").replace(/^\w/, (char) => char.toUpperCase());
 }
 
-function TrackingStep({
-  label,
-  isActive,
-  isDone,
-}: {
-  label: string;
-  isActive: boolean;
-  isDone: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      <div
-        className={`mt-0.5 flex size-5 items-center justify-center rounded-full border text-[10px] font-semibold ${
-          isDone || isActive
-            ? "border-orange-500 bg-orange-500 text-white"
-            : "border-orange-200 bg-white text-orange-300"
-        }`}
-      >
-        {isDone ? "✓" : ""}
-      </div>
-      <p
-        className={`text-sm ${
-          isDone || isActive ? "text-gray-800" : "text-gray-400"
-        }`}
-      >
-        {label}
-      </p>
-    </div>
-  );
-}
-
 function OrderDetailSkeleton() {
   return (
     <Card className="rounded-2xl border-none bg-card shadow-md">
@@ -95,7 +65,15 @@ export default function CustomerTrackOrderDetailPage() {
     loading: cartLoading,
   } = useCarts();
   const { liveAddress, loading: loadingLiveAddress } = useLiveAddress();
-  const { selectedOrder, loadingDetail, loadOrderById, submitDriverFeedback } = useOrders();
+  const {
+    selectedOrder,
+    loadingDetail,
+    tracking,
+    loadingTracking,
+    loadOrderById,
+    loadOrderTracking,
+    submitDriverFeedback,
+  } = useOrders();
   const {
     notifications,
     loading: notificationsLoading,
@@ -139,13 +117,33 @@ export default function CustomerTrackOrderDetailPage() {
     void (async () => {
       try {
         await loadOrderById(orderId);
+        await loadOrderTracking(orderId);
       } catch (e) {
         toast.error(
           e instanceof Error ? e.message : "Could not load order details.",
         );
       }
     })();
-  }, [loadOrderById, orderId]);
+  }, [loadOrderById, loadOrderTracking, orderId]);
+
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      if (!active) return;
+      try {
+        await loadOrderTracking(orderId);
+      } catch {
+        // keep polling silently; initial load already shows errors
+      }
+    };
+    const interval = window.setInterval(() => {
+      void poll();
+    }, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [loadOrderTracking, orderId]);
 
   useEffect(() => {
     if (!selectedOrder?.driverFeedback) {
@@ -164,16 +162,6 @@ export default function CustomerTrackOrderDetailPage() {
       </div>
     );
   }
-
-  const statusProgress: Array<CustomerOrder["status"]> = [
-    "pending",
-    "accepted",
-    "in_transit",
-    "delivered",
-  ];
-  const activeStatusIndex = selectedOrder
-    ? statusProgress.indexOf(selectedOrder.order.status)
-    : -1;
 
   const canSubmitDriverFeedback = Boolean(
     selectedOrder &&
@@ -236,23 +224,29 @@ export default function CustomerTrackOrderDetailPage() {
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-xl bg-orange-50 p-3">
-                <p className="mb-3 text-sm font-semibold text-gray-800">
-                  Delivery progress
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-800">
+                  Live tracking map
                 </p>
-                <div className="space-y-2">
-                  {statusProgress.map((status, index) => (
-                    <TrackingStep
-                      key={status}
-                      label={paymentStatusLabel(status)}
-                      isActive={activeStatusIndex === index}
-                      isDone={
-                        selectedOrder.order.status !== "cancelled" &&
-                        activeStatusIndex > index
-                      }
-                    />
-                  ))}
-                </div>
+                {tracking ? (
+                  <CustomerOrderTrackingMap
+                    pickup={tracking.pickup}
+                    destination={tracking.destination}
+                    driverLocation={tracking.driver?.location ?? null}
+                    status={tracking.status}
+                  />
+                ) : (
+                  <Skeleton className="h-[300px] rounded-2xl bg-orange-100/70" />
+                )}
+                <p className="text-xs text-gray-500">
+                  {loadingTracking
+                    ? "Refreshing live location..."
+                    : tracking?.driver?.locationUpdatedAt
+                      ? `Driver location updated at ${formatOrderDate(
+                          tracking.driver.locationUpdatedAt,
+                        )}`
+                      : "Waiting for live driver location updates."}
+                </p>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">

@@ -1,5 +1,6 @@
 import { and, asc, eq, or } from "drizzle-orm";
 import type { Context } from "hono";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { db } from "../db.js";
 import type { AuthUser } from "../middleware/auth.middleware.js";
@@ -525,6 +526,18 @@ const orderParamSchema = z.object({
   orderId: z.string().uuid(),
 });
 
+const deliveryCodeLength = Number(process.env.DELIVERY_CODE_LENGTH ?? 5);
+const deliveryVerificationSchema = z.object({
+  deliveryCode: z
+    .string()
+    .trim()
+    .regex(new RegExp(`^\\d{${deliveryCodeLength}}$`)),
+});
+
+function hashDeliveryCode(code: string): string {
+  return createHash("sha256").update(code).digest("hex");
+}
+
 export const startDriverTrip = async (c: Context<DriverEnv>) => {
   const params = orderParamSchema.safeParse(c.req.param());
   if (!params.success) {
@@ -563,6 +576,15 @@ export const markDriverOrderDelivered = async (c: Context<DriverEnv>) => {
   if (!params.success) {
     return c.json({ message: "Invalid order id." }, 400);
   }
+  const bodyParsed = deliveryVerificationSchema.safeParse(await c.req.json());
+  if (!bodyParsed.success) {
+    return c.json(
+      {
+        message: `Delivery code must be exactly ${deliveryCodeLength} digits.`,
+      },
+      400,
+    );
+  }
   const driverId = c.var.user.id;
 
   const orderRows = await db
@@ -581,6 +603,20 @@ export const markDriverOrderDelivered = async (c: Context<DriverEnv>) => {
       { message: "Only in transit orders can be marked delivered." },
       409,
     );
+  }
+  if (!order.deliveryCodeHash) {
+    return c.json(
+      {
+        message:
+          "Delivery verification code is unavailable for this order. Contact support.",
+      },
+      409,
+    );
+  }
+  const isCodeValid =
+    hashDeliveryCode(bodyParsed.data.deliveryCode) === order.deliveryCodeHash;
+  if (!isCodeValid) {
+    return c.json({ message: "Invalid delivery verification code." }, 400);
   }
 
   const [updated] = await db

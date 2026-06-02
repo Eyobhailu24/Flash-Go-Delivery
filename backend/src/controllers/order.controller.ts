@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { Context } from "hono";
+import { createHash, randomInt } from "node:crypto";
 import { z } from "zod";
 import { db } from "../db.js";
 import type { AuthUser } from "../middleware/auth.middleware.js";
@@ -119,6 +120,30 @@ function computeDeliveryFee(routeDistanceKm: number): number {
   return 50 + extraKm * 15;
 }
 
+const deliveryCodeLength = Number(process.env.DELIVERY_CODE_LENGTH ?? 5);
+
+function hashDeliveryCode(code: string): string {
+  return createHash("sha256").update(code).digest("hex");
+}
+
+function generateDeliveryCode(): string {
+  const min = 10 ** (deliveryCodeLength - 1);
+  const max = 10 ** deliveryCodeLength;
+  return String(randomInt(min, max));
+}
+
+function emitDeliveryCodeOtpLog(input: {
+  customerPhoneNumber: string | null;
+  orderId: string;
+  code: string;
+}): void {
+  if ((process.env.OTP_BYPASS ?? "false") === "true") {
+    console.log(
+      `[DELIVERY-OTP] order=${input.orderId} customer=${input.customerPhoneNumber ?? "unknown"} code=${input.code}`,
+    );
+  }
+}
+
 function rankDriversByDistanceToPoint(
   drivers: Array<{
     id: string;
@@ -174,6 +199,34 @@ function pickCustomerAddressCoordinates(
   return {
     lat: candidate.lat,
     lng: candidate.lng,
+  };
+}
+
+function pickCustomerAddressWithCoordinates(
+  addresses:
+    | Array<{
+        label?: string;
+        address: string;
+        lat?: number;
+        lng?: number;
+        isDefault?: boolean;
+      }>
+    | null
+    | undefined,
+): { address: string; lat: number | null; lng: number | null } | null {
+  if (!addresses || addresses.length === 0) return null;
+  const defaultAddress = addresses.find((entry) => entry.isDefault);
+  const candidate = defaultAddress ?? addresses[0];
+  return {
+    address: candidate.address,
+    lat:
+      typeof candidate.lat === "number" && Number.isFinite(candidate.lat)
+        ? candidate.lat
+        : null,
+    lng:
+      typeof candidate.lng === "number" && Number.isFinite(candidate.lng)
+        ? candidate.lng
+        : null,
   };
 }
 
@@ -317,6 +370,15 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
     )
     .where(eq(cartItems.cartId, activeCart.id));
 
+  const customerRows = await db
+    .select({
+      phoneNumber: users.phoneNumber,
+    })
+    .from(users)
+    .where(eq(users.id, customerId))
+    .limit(1);
+  const deliveryCode = generateDeliveryCode();
+
   const driverCandidates = await db
     .select({
       id: users.id,
@@ -351,6 +413,7 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
         deliveryFee: toMoneyString(deliveryFee),
         serviceCharge: toMoneyString(serviceCharge),
         routeDistanceKm: toMoneyString(routeDistanceKm),
+        deliveryCodeHash: hashDeliveryCode(deliveryCode),
       })
       .returning();
     const createdOrder = createdOrders[0];
@@ -416,6 +479,12 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
     };
   });
 
+  emitDeliveryCodeOtpLog({
+    customerPhoneNumber: customerRows[0]?.phoneNumber ?? null,
+    orderId: result.order.id,
+    code: deliveryCode,
+  });
+
   return c.json(result, 201);
 };
 
@@ -476,6 +545,14 @@ export const createPackageOrder = async (c: Context<OrderEnv>) => {
     lat: pickup.lat,
     lng: pickup.lng,
   });
+  const customerRows = await db
+    .select({
+      phoneNumber: users.phoneNumber,
+    })
+    .from(users)
+    .where(eq(users.id, customerId))
+    .limit(1);
+  const deliveryCode = generateDeliveryCode();
 
   const result = await db.transaction(async (tx) => {
     const createdOrders = await tx
@@ -497,6 +574,7 @@ export const createPackageOrder = async (c: Context<OrderEnv>) => {
         dropoffAddress: dropoff.address,
         dropoffLat: dropoff.lat.toFixed(7),
         dropoffLng: dropoff.lng.toFixed(7),
+        deliveryCodeHash: hashDeliveryCode(deliveryCode),
       })
       .returning();
     const createdOrder = createdOrders[0];
@@ -543,6 +621,12 @@ export const createPackageOrder = async (c: Context<OrderEnv>) => {
       assignedDriverId: null,
       offeredDriversCount: rankedDrivers.length,
     };
+  });
+
+  emitDeliveryCodeOtpLog({
+    customerPhoneNumber: customerRows[0]?.phoneNumber ?? null,
+    orderId: result.order.id,
+    code: deliveryCode,
   });
 
   return c.json(result, 201);
@@ -771,6 +855,117 @@ export const getMyOrderById = async (c: Context<OrderEnv>) => {
         }
       : null,
     driverFeedback: feedbackRows[0] ?? null,
+  });
+};
+
+export const getMyOrderTracking = async (c: Context<OrderEnv>) => {
+  const params = orderIdParamSchema.safeParse(c.req.param());
+  if (!params.success) {
+    return c.json({ message: "Invalid order id." }, 400);
+  }
+
+  const orderRows = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.id, params.data.id),
+        eq(orders.customerId, c.var.user.id),
+      ),
+    )
+    .limit(1);
+  const order = orderRows[0];
+  if (!order) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+
+  const [businessRows, customerRows, driverRows] = await Promise.all([
+    order.businessId
+      ? db
+          .select({
+            businessName: businessProfile.businessName,
+            address: businessProfile.address,
+            latitude: businessProfile.latitude,
+            longitude: businessProfile.longitude,
+          })
+          .from(businessProfile)
+          .where(eq(businessProfile.userId, order.businessId))
+          .limit(1)
+      : Promise.resolve([]),
+    db
+      .select({
+        addresses: customerProfile.addresses,
+      })
+      .from(customerProfile)
+      .where(eq(customerProfile.userId, order.customerId))
+      .limit(1),
+    order.driverId
+      ? db
+          .select({
+            id: users.id,
+            fullName: users.fullName,
+            location: driverLocations.location,
+            locationUpdatedAt: driverLocations.updatedAt,
+          })
+          .from(users)
+          .leftJoin(driverLocations, eq(driverLocations.driverId, users.id))
+          .where(eq(users.id, order.driverId))
+          .limit(1)
+      : Promise.resolve([]),
+  ]);
+
+  const business = businessRows[0] ?? null;
+  const customerAddress = pickCustomerAddressWithCoordinates(
+    customerRows[0]?.addresses,
+  );
+
+  const pickup =
+    order.orderType === "package"
+      ? {
+          address: order.pickupAddress ?? "Pickup address",
+          latitude: order.pickupLat !== null ? Number(order.pickupLat) : null,
+          longitude:
+            order.pickupLng !== null ? Number(order.pickupLng) : null,
+        }
+      : {
+          address: business?.address ?? "Business address",
+          latitude: business?.latitude ?? null,
+          longitude: business?.longitude ?? null,
+        };
+
+  const destination =
+    order.orderType === "package"
+      ? {
+          address:
+            order.dropoffAddress ??
+            customerAddress?.address ??
+            "Destination address",
+          latitude: order.dropoffLat !== null ? Number(order.dropoffLat) : null,
+          longitude:
+            order.dropoffLng !== null ? Number(order.dropoffLng) : null,
+        }
+      : {
+          address: customerAddress?.address ?? "Customer address",
+          latitude: customerAddress?.lat ?? null,
+          longitude: customerAddress?.lng ?? null,
+        };
+
+  const driver = driverRows[0]
+    ? {
+        id: driverRows[0].id,
+        fullName: driverRows[0].fullName,
+        location: driverRows[0].location ?? null,
+        locationUpdatedAt: driverRows[0].locationUpdatedAt ?? null,
+      }
+    : null;
+
+  return c.json({
+    orderId: order.id,
+    status: order.status,
+    orderType: order.orderType,
+    pickup,
+    destination,
+    driver,
   });
 };
 

@@ -32,6 +32,7 @@ export const orders = pgTable(
     dropoffAddress: text("dropoff_address"),
     dropoffLat: numeric("dropoff_lat", { precision: 10, scale: 7 }),
     dropoffLng: numeric("dropoff_lng", { precision: 10, scale: 7 }),
+    deliveryCodeHash: text("delivery_code_hash"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

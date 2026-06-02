@@ -7,6 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeliveryTopNavbar } from "@/components/delivery/delivery-top-navbar";
 import { DriverRouteMap } from "@/components/delivery/driver-route-map";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { formatBirr } from "@/lib/currency";
@@ -65,6 +74,8 @@ export default function DeliveryManPage() {
     "idle" | "tracking" | "unsupported" | "denied"
   >("idle");
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [deliveryCodeDialogOpen, setDeliveryCodeDialogOpen] = useState(false);
+  const [deliveryCode, setDeliveryCode] = useState("");
   const firstName = user?.fullName?.split(" ")[0] ?? "Driver";
 
   useEffect(() => {
@@ -283,9 +294,13 @@ export default function DeliveryManPage() {
 
   const handleMarkDelivered = async () => {
     if (!assignedOrder) return;
+    if (deliveryCode.trim().length !== 5) {
+      toast.error("Please enter the 5-digit code from customer.");
+      return;
+    }
     setOrderActionLoading("deliver");
     try {
-      await deliverAssignedOrder(assignedOrder.id);
+      await deliverAssignedOrder(assignedOrder.id, deliveryCode.trim());
       toast.success("Order marked delivered.");
       const [offerResult, assignedResult] = await Promise.all([
         fetchCurrentDriverOffer(),
@@ -293,6 +308,8 @@ export default function DeliveryManPage() {
       ]);
       setOffer(offerResult.offer);
       setAssignedOrder(assignedResult.order);
+      setDeliveryCode("");
+      setDeliveryCodeDialogOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not mark delivered.");
     } finally {
@@ -301,8 +318,9 @@ export default function DeliveryManPage() {
   };
 
   return (
-    <main className="customer-app flex min-h-screen w-full flex-col gap-6 bg-background px-4 pt-8 pb-6 md:px-6">
-      <DeliveryTopNavbar firstName={firstName} statusLabel={locationLabel} />
+    <>
+      <main className="customer-app flex min-h-screen w-full flex-col gap-6 bg-background px-4 pt-8 pb-6 md:px-6">
+        <DeliveryTopNavbar firstName={firstName} statusLabel={locationLabel} />
 
       <section className="space-y-2">
         <h1 className="text-[32px] leading-none font-semibold text-gray-900">
@@ -388,7 +406,7 @@ export default function DeliveryManPage() {
               <Button
                 type="button"
                 className="rounded-xl bg-orange-500 text-white hover:bg-orange-400"
-                onClick={() => void handleMarkDelivered()}
+                onClick={() => setDeliveryCodeDialogOpen(true)}
                 disabled={
                   assignedOrder.status !== "in_transit" ||
                   orderActionLoading !== null
@@ -536,6 +554,74 @@ export default function DeliveryManPage() {
           </Card>
         </section>
       ) : null}
-    </main>
+      </main>
+      <Dialog open={deliveryCodeDialogOpen} onOpenChange={setDeliveryCodeDialogOpen}>
+        <DialogContent className="max-w-md rounded-2xl p-5">
+          <DialogHeader>
+            <DialogTitle>Confirm delivery with customer code</DialogTitle>
+            <DialogDescription>
+              Ask the customer for their 5-digit delivery code and enter it below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center py-2">
+            <InputOTP
+              maxLength={5}
+              value={deliveryCode}
+              onChange={setDeliveryCode}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              disabled={orderActionLoading === "deliver"}
+              containerClassName="justify-center"
+            >
+              <InputOTPGroup className="gap-2 rounded-none bg-transparent">
+                <InputOTPSlot
+                  index={0}
+                  className="size-12 rounded-xl border border-gray-900 bg-black text-lg font-semibold text-white data-[active=true]:z-10 data-[active=true]:border-orange-400 data-[active=true]:ring-2 data-[active=true]:ring-orange-300"
+                />
+                <InputOTPSlot
+                  index={1}
+                  className="size-12 rounded-xl border border-gray-900 bg-black text-lg font-semibold text-white data-[active=true]:z-10 data-[active=true]:border-orange-400 data-[active=true]:ring-2 data-[active=true]:ring-orange-300"
+                />
+                <InputOTPSlot
+                  index={2}
+                  className="size-12 rounded-xl border border-gray-900 bg-black text-lg font-semibold text-white data-[active=true]:z-10 data-[active=true]:border-orange-400 data-[active=true]:ring-2 data-[active=true]:ring-orange-300"
+                />
+                <InputOTPSlot
+                  index={3}
+                  className="size-12 rounded-xl border border-gray-900 bg-black text-lg font-semibold text-white data-[active=true]:z-10 data-[active=true]:border-orange-400 data-[active=true]:ring-2 data-[active=true]:ring-orange-300"
+                />
+                <InputOTPSlot
+                  index={4}
+                  className="size-12 rounded-xl border border-gray-900 bg-black text-lg font-semibold text-white data-[active=true]:z-10 data-[active=true]:border-orange-400 data-[active=true]:ring-2 data-[active=true]:ring-orange-300"
+                />
+              </InputOTPGroup>
+            </InputOTP>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDeliveryCodeDialogOpen(false);
+                setDeliveryCode("");
+              }}
+              disabled={orderActionLoading === "deliver"}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-orange-500 text-white hover:bg-orange-400"
+              disabled={
+                deliveryCode.trim().length !== 5 || orderActionLoading === "deliver"
+              }
+              onClick={() => void handleMarkDelivered()}
+            >
+              {orderActionLoading === "deliver" ? "Verifying..." : "Verify & complete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

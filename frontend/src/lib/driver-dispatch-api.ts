@@ -121,11 +121,12 @@ export async function startAssignedOrder(orderId: string) {
   return readAuthJson<{ order: { id: string; status: string } }>(res);
 }
 
-export async function deliverAssignedOrder(orderId: string) {
+export async function deliverAssignedOrder(orderId: string, deliveryCode: string) {
   const res = await authFetch(
     `/driver-dispatch/orders/${encodeURIComponent(orderId)}/deliver`,
     {
       method: "POST",
+      body: JSON.stringify({ deliveryCode }),
     },
   );
   return readAuthJson<{ order: { id: string; status: string } }>(res);
