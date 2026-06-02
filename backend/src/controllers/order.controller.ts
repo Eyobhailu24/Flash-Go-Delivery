@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { z } from "zod";
 import { db } from "../db.js";
@@ -11,6 +11,7 @@ import {
   customerProfile,
   driverProfile,
   driverLocations,
+  feedback,
   notifications,
   orderDriverOffers,
   orderItems,
@@ -49,6 +50,11 @@ const packageCheckoutSchema = z.object({
 
 const orderIdParamSchema = z.object({
   id: z.string().uuid(),
+});
+
+const submitDriverFeedbackSchema = z.object({
+  rating: z.coerce.number().int().min(1).max(5),
+  comment: z.string().trim().max(1000).optional(),
 });
 
 function toMoneyNumber(value: string | null): number {
@@ -685,7 +691,7 @@ export const getMyOrderById = async (c: Context<OrderEnv>) => {
     .from(payments)
     .where(eq(payments.orderId, order.id))
     .limit(1);
-  const [businessRows, driverRows, driverProfileRows] = await Promise.all([
+  const [businessRows, driverRows, driverProfileRows, feedbackRows] = await Promise.all([
     order.businessId
       ? db
           .select({
@@ -720,6 +726,24 @@ export const getMyOrderById = async (c: Context<OrderEnv>) => {
           .where(eq(driverProfile.userId, order.driverId))
           .limit(1)
       : Promise.resolve([]),
+    order.driverId
+      ? db
+          .select({
+            rating: feedback.rating,
+            comment: feedback.comment,
+            createdAt: feedback.createdAt,
+          })
+          .from(feedback)
+          .where(
+            and(
+              eq(feedback.orderId, order.id),
+              eq(feedback.customerId, c.var.user.id),
+              eq(feedback.targetType, "driver"),
+              eq(feedback.targetId, order.driverId),
+            ),
+          )
+          .limit(1)
+      : Promise.resolve([]),
   ]);
 
   const business = businessRows[0] ?? null;
@@ -746,7 +770,123 @@ export const getMyOrderById = async (c: Context<OrderEnv>) => {
           vehicleType: driverExtra?.vehicleType ?? null,
         }
       : null,
+    driverFeedback: feedbackRows[0] ?? null,
   });
+};
+
+export const submitDriverFeedback = async (c: Context<OrderEnv>) => {
+  if (c.var.user.role !== "customer") {
+    return c.json({ message: "Only customers can submit driver feedback." }, 403);
+  }
+
+  const params = orderIdParamSchema.safeParse(c.req.param());
+  if (!params.success) {
+    return c.json({ message: "Invalid order id." }, 400);
+  }
+
+  const parsed = submitDriverFeedbackSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ message: "Invalid request payload." }, 400);
+  }
+
+  const orderRows = await db
+    .select({
+      id: orders.id,
+      customerId: orders.customerId,
+      driverId: orders.driverId,
+      status: orders.status,
+    })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.id, params.data.id),
+        eq(orders.customerId, c.var.user.id),
+      ),
+    )
+    .limit(1);
+  const order = orderRows[0];
+  if (!order) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+  if (order.status !== "delivered") {
+    return c.json(
+      { message: "You can only rate a driver after delivery." },
+      409,
+    );
+  }
+  if (!order.driverId) {
+    return c.json({ message: "This order has no assigned driver." }, 409);
+  }
+
+  const existingFeedbackRows = await db
+    .select({
+      feedbackId: feedback.feedbackId,
+    })
+    .from(feedback)
+    .where(
+      and(
+        eq(feedback.orderId, order.id),
+        eq(feedback.customerId, c.var.user.id),
+        eq(feedback.targetType, "driver"),
+        eq(feedback.targetId, order.driverId),
+      ),
+    )
+    .limit(1);
+  if (existingFeedbackRows[0]) {
+    return c.json({ message: "You have already rated this driver." }, 409);
+  }
+
+  const comment = parsed.data.comment?.trim();
+  const insertedRows = await db
+    .insert(feedback)
+    .values({
+      orderId: order.id,
+      customerId: c.var.user.id,
+      targetType: "driver",
+      targetId: order.driverId,
+      rating: parsed.data.rating,
+      comment: comment && comment.length > 0 ? comment : null,
+    })
+    .returning({
+      feedbackId: feedback.feedbackId,
+      rating: feedback.rating,
+      comment: feedback.comment,
+      createdAt: feedback.createdAt,
+    });
+  const inserted = insertedRows[0];
+
+  const averageRows = await db
+    .select({
+      averageRating: sql<string>`avg(${feedback.rating})`,
+    })
+    .from(feedback)
+    .where(
+      and(
+        eq(feedback.targetType, "driver"),
+        eq(feedback.targetId, order.driverId),
+      ),
+    );
+  const averageRating = Number(averageRows[0]?.averageRating ?? parsed.data.rating);
+
+  await db
+    .update(driverProfile)
+    .set({
+      rating: Number.isFinite(averageRating)
+        ? Number(averageRating.toFixed(2))
+        : parsed.data.rating,
+    })
+    .where(eq(driverProfile.userId, order.driverId));
+
+  return c.json(
+    {
+      message: "Feedback submitted.",
+      feedback: inserted,
+      driverAverageRating: Number.isFinite(averageRating)
+        ? Number(averageRating.toFixed(2))
+        : parsed.data.rating,
+    },
+    201,
+  );
 };
 
 const adminOrderLineSchema = z.object({

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Clock3, MapPin, PackageCheck, Truck } from "lucide-react";
+import { Clock3, MapPin, PackageCheck, Star, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { CustomerTopNavbar } from "@/components/customer/customer-top-navbar";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { formatBirr } from "@/lib/currency";
 import { useCarts } from "../../_hooks/use-carts";
@@ -94,12 +95,15 @@ export default function CustomerTrackOrderDetailPage() {
     loading: cartLoading,
   } = useCarts();
   const { liveAddress, loading: loadingLiveAddress } = useLiveAddress();
-  const { selectedOrder, loadingDetail, loadOrderById } = useOrders();
+  const { selectedOrder, loadingDetail, loadOrderById, submitDriverFeedback } = useOrders();
   const {
     notifications,
     loading: notificationsLoading,
     loadNotifications,
   } = useNotifications();
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
   const firstName = user?.fullName?.split(" ")[0] ?? "Guest";
   const todayLabel = useMemo(
@@ -143,6 +147,16 @@ export default function CustomerTrackOrderDetailPage() {
     })();
   }, [loadOrderById, orderId]);
 
+  useEffect(() => {
+    if (!selectedOrder?.driverFeedback) {
+      setFeedbackRating(0);
+      setFeedbackComment("");
+      return;
+    }
+    setFeedbackRating(selectedOrder.driverFeedback.rating);
+    setFeedbackComment(selectedOrder.driverFeedback.comment ?? "");
+  }, [selectedOrder?.driverFeedback]);
+
   if (!isReady) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -160,6 +174,13 @@ export default function CustomerTrackOrderDetailPage() {
   const activeStatusIndex = selectedOrder
     ? statusProgress.indexOf(selectedOrder.order.status)
     : -1;
+
+  const canSubmitDriverFeedback = Boolean(
+    selectedOrder &&
+      selectedOrder.order.status === "delivered" &&
+      selectedOrder.driver &&
+      !selectedOrder.driverFeedback,
+  );
 
   return (
     <main className="customer-app flex min-h-screen w-full flex-col gap-6 bg-background px-4 pt-8 pb-6 md:px-6">
@@ -354,6 +375,105 @@ export default function CustomerTrackOrderDetailPage() {
                   </div>
                 </div>
               )}
+
+              {selectedOrder.order.orderType !== "package" && selectedOrder.driver ? (
+                <div className="rounded-xl border border-orange-100 p-3">
+                  <p className="mb-2 text-sm font-semibold text-gray-800">
+                    Rate your driver
+                  </p>
+                  {selectedOrder.driverFeedback ? (
+                    <div className="space-y-2 rounded-xl bg-orange-50 p-3">
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: 5 }).map((_, index) => (
+                          <Star
+                            key={`driver-feedback-star-${index}`}
+                            className={`size-4 ${
+                              index < selectedOrder.driverFeedback!.rating
+                                ? "fill-orange-500 text-orange-500"
+                                : "text-orange-200"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        You rated {selectedOrder.driver.fullName}. Thank you for your feedback.
+                      </p>
+                      {selectedOrder.driverFeedback.comment ? (
+                        <p className="text-sm text-gray-700">
+                          "{selectedOrder.driverFeedback.comment}"
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : canSubmitDriverFeedback ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        {Array.from({ length: 5 }).map((_, index) => {
+                          const value = index + 1;
+                          const active = feedbackRating >= value;
+                          return (
+                            <button
+                              key={`driver-rate-star-${value}`}
+                              type="button"
+                              onClick={() => setFeedbackRating(value)}
+                              className="rounded-full p-1 transition hover:scale-110"
+                              aria-label={`Rate ${value} star${value > 1 ? "s" : ""}`}
+                            >
+                              <Star
+                                className={`size-6 ${
+                                  active
+                                    ? "fill-orange-500 text-orange-500"
+                                    : "text-orange-200"
+                                }`}
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <Textarea
+                        placeholder="Optional comment about your delivery experience"
+                        className="min-h-20 rounded-xl border-orange-100 bg-orange-50/30 focus-visible:ring-orange-300"
+                        value={feedbackComment}
+                        onChange={(e) => setFeedbackComment(e.target.value)}
+                        disabled={submittingFeedback}
+                        maxLength={1000}
+                      />
+                      <Button
+                        type="button"
+                        className="rounded-xl bg-orange-500 text-white hover:bg-orange-400"
+                        disabled={feedbackRating < 1 || submittingFeedback}
+                        onClick={() => {
+                          if (!selectedOrder || feedbackRating < 1) return;
+                          void (async () => {
+                            setSubmittingFeedback(true);
+                            try {
+                              await submitDriverFeedback({
+                                orderId: selectedOrder.order.id,
+                                rating: feedbackRating,
+                                comment: feedbackComment,
+                              });
+                              toast.success("Thanks for rating your driver.");
+                            } catch (e) {
+                              toast.error(
+                                e instanceof Error
+                                  ? e.message
+                                  : "Could not submit feedback.",
+                              );
+                            } finally {
+                              setSubmittingFeedback(false);
+                            }
+                          })();
+                        }}
+                      >
+                        {submittingFeedback ? "Submitting..." : "Submit rating"}
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      Driver feedback is available after your order is delivered.
+                    </p>
+                  )}
+                </div>
+              ) : null}
 
               <div className="rounded-xl border border-orange-100 bg-white p-3">
                 <div className="flex items-center justify-between text-sm">

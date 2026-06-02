@@ -10,6 +10,7 @@ import {
   listAdminOrders,
   listBusinessOrders,
   patchAdminOrder,
+  submitDriverFeedback,
 } from "../controllers/order.controller.js";
 import {
   protect,
@@ -36,6 +37,7 @@ customerAdmin.post("/checkout", checkoutOrder);
 customerAdmin.post("/checkout/estimate", estimateCheckoutOrder);
 customerAdmin.post("/package", createPackageOrder);
 customerAdmin.get("/my", getMyOrders);
+customerAdmin.post("/:id/feedback", submitDriverFeedback);
 
 const adminOrders = new Hono<Env>();
 adminOrders.use("*", restrictTo("admin"));

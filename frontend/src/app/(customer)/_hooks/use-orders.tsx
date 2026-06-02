@@ -34,6 +34,12 @@ type BusinessSummary = {
   address: string | null;
 };
 
+type DriverFeedbackSummary = {
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+};
+
 export type CustomerOrder = {
   id: string;
   customerId: string;
@@ -72,6 +78,13 @@ export type CustomerOrderDetail = {
   payment: PaymentSummary | null;
   business: BusinessSummary | null;
   driver: DriverSummary | null;
+  driverFeedback: DriverFeedbackSummary | null;
+};
+
+type SubmitDriverFeedbackInput = {
+  orderId: string;
+  rating: number;
+  comment?: string;
 };
 
 async function fetchMyOrders(): Promise<CustomerOrder[]> {
@@ -83,6 +96,25 @@ async function fetchMyOrders(): Promise<CustomerOrder[]> {
 async function fetchMyOrderById(orderId: string): Promise<CustomerOrderDetail> {
   const response = await authFetch(`/orders/${encodeURIComponent(orderId)}`);
   return readAuthJson<CustomerOrderDetail>(response);
+}
+
+async function postDriverFeedback(
+  input: SubmitDriverFeedbackInput,
+): Promise<{
+  feedback: DriverFeedbackSummary;
+  driverAverageRating: number;
+}> {
+  const response = await authFetch(`/orders/${encodeURIComponent(input.orderId)}/feedback`, {
+    method: "POST",
+    body: JSON.stringify({
+      rating: input.rating,
+      comment: input.comment,
+    }),
+  });
+  return readAuthJson<{
+    feedback: DriverFeedbackSummary;
+    driverAverageRating: number;
+  }>(response);
 }
 
 export function useOrders() {
@@ -128,6 +160,27 @@ export function useOrders() {
     }
   }, []);
 
+  const submitDriverFeedback = useCallback(
+    async (input: SubmitDriverFeedbackInput) => {
+      const result = await postDriverFeedback(input);
+      setSelectedOrder((prev) => {
+        if (!prev || prev.order.id !== input.orderId) return prev;
+        return {
+          ...prev,
+          driverFeedback: result.feedback,
+          driver: prev.driver
+            ? {
+                ...prev.driver,
+                rating: result.driverAverageRating,
+              }
+            : prev.driver,
+        };
+      });
+      return result;
+    },
+    [],
+  );
+
   return useMemo(
     () => ({
       orders,
@@ -137,12 +190,14 @@ export function useOrders() {
       error,
       loadOrders,
       loadOrderById,
+      submitDriverFeedback,
       setSelectedOrder,
     }),
     [
       error,
       loadOrderById,
       loadOrders,
+      submitDriverFeedback,
       loadingDetail,
       loadingOrders,
       orders,
