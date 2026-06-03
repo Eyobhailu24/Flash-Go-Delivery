@@ -16,7 +16,8 @@ import { orderRoutes } from './routes/order.routes.js';
 import { paymentRoutes } from './routes/payment.routes.js';
 import { driverDispatchRoutes } from './routes/driver-dispatch.routes.js';
 import { notificationsRoutes } from './routes/notifications.routes.js';
-import './bot/index.js'; // Start the Telegram bot
+// Telegram bot disabled locally to avoid Grammy 409 (duplicate getUpdates).
+// Re-enable when only one bot instance uses this token: import './bot/index.js';
 
 const app = new Hono();
 
