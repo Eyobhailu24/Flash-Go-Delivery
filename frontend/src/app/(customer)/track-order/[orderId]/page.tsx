@@ -132,6 +132,7 @@ export default function CustomerTrackOrderDetailPage() {
       if (!active) return;
       try {
         await loadOrderTracking(orderId);
+        await loadOrderById(orderId, { silent: true });
       } catch {
         // keep polling silently; initial load already shows errors
       }
@@ -143,7 +144,7 @@ export default function CustomerTrackOrderDetailPage() {
       active = false;
       window.clearInterval(interval);
     };
-  }, [loadOrderTracking, orderId]);
+  }, [loadOrderById, loadOrderTracking, orderId]);
 
   useEffect(() => {
     if (!selectedOrder?.driverFeedback) {
@@ -215,8 +216,12 @@ export default function CustomerTrackOrderDetailPage() {
                 <CardTitle className="text-gray-800">
                   Order #{selectedOrder.order.id.slice(0, 8)}
                 </CardTitle>
-                <Badge className={statusBadgeClass(selectedOrder.order.status)}>
-                  {paymentStatusLabel(selectedOrder.order.status)}
+                <Badge
+                  className={statusBadgeClass(
+                    tracking?.status ?? selectedOrder.order.status,
+                  )}
+                >
+                  {paymentStatusLabel(tracking?.status ?? selectedOrder.order.status)}
                 </Badge>
               </div>
               <p className="text-xs text-gray-500">

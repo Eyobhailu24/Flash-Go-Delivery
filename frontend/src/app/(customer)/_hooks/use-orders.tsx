@@ -65,6 +65,7 @@ export type CustomerOrderTracking = {
     } | null;
     locationUpdatedAt: string | null;
   } | null;
+  payment: PaymentSummary | null;
 };
 
 export type CustomerOrder = {
@@ -184,6 +185,14 @@ export function useOrders() {
     try {
       const data = await fetchMyOrderTracking(orderId);
       setTracking(data);
+      setSelectedOrder((prev) => {
+        if (!prev || prev.order.id !== orderId) return prev;
+        return {
+          ...prev,
+          order: { ...prev.order, status: data.status },
+          payment: data.payment ?? prev.payment,
+        };
+      });
       return data;
     } catch (e) {
       const message =
@@ -195,22 +204,31 @@ export function useOrders() {
     }
   }, []);
 
-  const loadOrderById = useCallback(async (orderId: string) => {
-    setLoadingDetail(true);
-    setError(null);
-    try {
-      const detail = await fetchMyOrderById(orderId);
-      setSelectedOrder(detail);
-      return detail;
-    } catch (e) {
-      const message =
-        e instanceof Error ? e.message : "Could not load order details.";
-      setError(message);
-      throw e;
-    } finally {
-      setLoadingDetail(false);
-    }
-  }, []);
+  const loadOrderById = useCallback(
+    async (orderId: string, options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setLoadingDetail(true);
+        setError(null);
+      }
+      try {
+        const detail = await fetchMyOrderById(orderId);
+        setSelectedOrder(detail);
+        return detail;
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : "Could not load order details.";
+        if (!options?.silent) {
+          setError(message);
+        }
+        throw e;
+      } finally {
+        if (!options?.silent) {
+          setLoadingDetail(false);
+        }
+      }
+    },
+    [],
+  );
 
   const submitDriverFeedback = useCallback(
     async (input: SubmitDriverFeedbackInput) => {

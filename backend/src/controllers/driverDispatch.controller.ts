@@ -13,6 +13,7 @@ import {
   orderItems,
   orders,
   driverLocations,
+  payments,
 } from "../schema.js";
 
 type DriverEnv = { Variables: { user: AuthUser } };
@@ -624,6 +625,13 @@ export const markDriverOrderDelivered = async (c: Context<DriverEnv>) => {
     .set({ status: "delivered" })
     .where(eq(orders.id, order.id))
     .returning();
+
+  await db
+    .update(payments)
+    .set({ status: "paid" })
+    .where(
+      and(eq(payments.orderId, order.id), eq(payments.status, "pending")),
+    );
 
   await db
     .update(driverProfile)

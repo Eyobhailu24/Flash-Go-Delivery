@@ -959,6 +959,21 @@ export const getMyOrderTracking = async (c: Context<OrderEnv>) => {
       }
     : null;
 
+  const paymentRows = await db
+    .select({
+      paymentId: payments.paymentId,
+      orderId: payments.orderId,
+      amount: payments.amount,
+      method: payments.method,
+      status: payments.status,
+      transactionId: payments.transactionId,
+      createdAt: payments.createdAt,
+    })
+    .from(payments)
+    .where(eq(payments.orderId, order.id))
+    .limit(1);
+  const payment = paymentRows[0] ?? null;
+
   return c.json({
     orderId: order.id,
     status: order.status,
@@ -966,6 +981,7 @@ export const getMyOrderTracking = async (c: Context<OrderEnv>) => {
     pickup,
     destination,
     driver,
+    payment,
   });
 };
 

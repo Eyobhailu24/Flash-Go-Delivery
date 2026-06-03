@@ -341,9 +341,7 @@ export default function CustomerCheckoutPage() {
 
       toast.success("Order placed successfully.");
       router.push(
-        `/payment-status?status=success&method=${selectedPaymentMethod}&order_id=${encodeURIComponent(
-          result.checkout.order.id,
-        )}`,
+        `/track-order/${encodeURIComponent(result.checkout.order.id)}`,
       );
       await loadPrimaryActiveCart();
     } catch (e) {

@@ -50,20 +50,37 @@ export default function PaymentStatusPage() {
           {txRef ? (
             <p className="text-xs text-gray-500">Transaction Ref: {txRef}</p>
           ) : null}
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {isSuccess && orderId ? (
+              <Button
+                asChild
+                className="rounded-xl bg-orange-500 text-white hover:bg-orange-400"
+              >
+                <Link href={`/track-order/${encodeURIComponent(orderId)}`}>
+                  Track your order
+                </Link>
+              </Button>
+            ) : null}
             <Button
               asChild
-              className="rounded-xl bg-orange-500 text-white hover:bg-orange-400"
+              className={
+                isSuccess && orderId
+                  ? "rounded-xl border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+                  : "rounded-xl bg-orange-500 text-white hover:bg-orange-400"
+              }
+              variant={isSuccess && orderId ? "outline" : "default"}
             >
               <Link href="/menu">Back to menu</Link>
             </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="rounded-xl border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
-            >
-              <Link href="/checkout">Open checkout</Link>
-            </Button>
+            {!isSuccess ? (
+              <Button
+                asChild
+                variant="outline"
+                className="rounded-xl border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+              >
+                <Link href="/checkout">Open checkout</Link>
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>

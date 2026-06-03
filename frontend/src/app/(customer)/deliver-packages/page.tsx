@@ -275,9 +275,7 @@ export default function CustomerDeliverPackagesPage() {
       }
       toast.success("Package delivery order created.");
       router.push(
-        `/payment-status?status=success&method=${selectedPaymentMethod}&order_id=${encodeURIComponent(
-          result.checkout.order.id,
-        )}`,
+        `/track-order/${encodeURIComponent(result.checkout.order.id)}`,
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not place package order.");

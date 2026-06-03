@@ -43,8 +43,11 @@ function toLatLng(point: Point): [number, number] | null {
   return [point.latitude, point.longitude];
 }
 
-async function fetchRoadRoute(pickup: [number, number], destination: [number, number]) {
-  const url = `https://router.project-osrm.org/route/v1/driving/${pickup[1]},${pickup[0]};${destination[1]},${destination[0]}?overview=full&geometries=geojson`;
+async function fetchRoadRoute(
+  from: [number, number],
+  to: [number, number],
+): Promise<LatLngExpression[]> {
+  const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
   const response = await fetch(url);
   if (!response.ok) throw new Error("Could not load route.");
   const data = (await response.json()) as {
@@ -64,17 +67,23 @@ export function CustomerOrderTrackingMap({
 }: CustomerOrderTrackingMapProps) {
   const pickupLatLng = toLatLng(pickup);
   const destinationLatLng = toLatLng(destination);
+  const driverLatLng = useMemo<[number, number] | null>(() => {
+    if (!driverLocation) return null;
+    return [driverLocation.lat, driverLocation.lng];
+  }, [driverLocation]);
+
   const fallbackRoute = useMemo<LatLngExpression[]>(() => {
-    if (!pickupLatLng || !destinationLatLng) return [];
-    return [pickupLatLng, destinationLatLng];
-  }, [destinationLatLng, pickupLatLng]);
+    if (!driverLatLng || !destinationLatLng) return [];
+    return [driverLatLng, destinationLatLng];
+  }, [destinationLatLng, driverLatLng]);
+
   const [route, setRoute] = useState<RouteState>({
     status: "idle",
-    points: fallbackRoute,
+    points: [],
   });
 
   useEffect(() => {
-    if (!pickupLatLng || !destinationLatLng) {
+    if (!driverLatLng || !destinationLatLng) {
       setRoute({ status: "idle", points: [] });
       return;
     }
@@ -82,7 +91,7 @@ export function CustomerOrderTrackingMap({
     setRoute({ status: "loading", points: fallbackRoute });
     void (async () => {
       try {
-        const points = await fetchRoadRoute(pickupLatLng, destinationLatLng);
+        const points = await fetchRoadRoute(driverLatLng, destinationLatLng);
         if (!active) return;
         setRoute({
           status: "ready",
@@ -96,12 +105,12 @@ export function CustomerOrderTrackingMap({
     return () => {
       active = false;
     };
-  }, [destinationLatLng, fallbackRoute, pickupLatLng]);
+  }, [destinationLatLng, driverLatLng, fallbackRoute]);
 
   const allPoints = [
     pickupLatLng,
     destinationLatLng,
-    driverLocation ? ([driverLocation.lat, driverLocation.lng] as [number, number]) : null,
+    driverLatLng,
   ].filter((point): point is [number, number] => Boolean(point));
   const center: LatLngExpression = allPoints.length
     ? ([
@@ -111,6 +120,7 @@ export function CustomerOrderTrackingMap({
     : ([9.03, 38.74] as [number, number]);
 
   const currentStepIndex = steps.findIndex((step) => step.value === status);
+  const showRoute = route.points.length > 0 && Boolean(driverLatLng);
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-orange-100 bg-white">
@@ -134,19 +144,27 @@ export function CustomerOrderTrackingMap({
               pathOptions={{ color: "#1d4ed8", fillColor: "#3b82f6", fillOpacity: 0.9 }}
             />
           ) : null}
-          {driverLocation ? (
+          {driverLatLng ? (
             <CircleMarker
-              center={[driverLocation.lat, driverLocation.lng]}
+              center={driverLatLng}
               radius={8}
               pathOptions={{ color: "#15803d", fillColor: "#22c55e", fillOpacity: 0.95 }}
             />
           ) : null}
-          <Polyline
-            positions={route.points}
-            pathOptions={{ color: "#f97316", weight: 5, opacity: 0.85 }}
-          />
+          {showRoute ? (
+            <Polyline
+              positions={route.points}
+              pathOptions={{ color: "#f97316", weight: 5, opacity: 0.85 }}
+            />
+          ) : null}
         </MapContainer>
       </div>
+
+      {!driverLatLng && status !== "delivered" && status !== "cancelled" ? (
+        <p className="absolute top-3 right-3 z-500 rounded-full bg-white/90 px-2 py-1 text-[11px] text-gray-600 shadow-sm">
+          Waiting for driver — route will appear when assigned
+        </p>
+      ) : null}
 
       <div className="pointer-events-none absolute bottom-3 left-3 z-500 inline-flex items-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-[11px] text-gray-600 shadow-md backdrop-blur-sm">
         <span className="inline-flex items-center gap-1">
@@ -195,13 +213,13 @@ export function CustomerOrderTrackingMap({
           </div>
         )}
       </div>
-      {(route.status === "loading" || route.status === "error") && (
+      {(route.status === "loading" || route.status === "error") && driverLatLng ? (
         <p className="absolute top-3 left-3 z-500 rounded-full bg-white/90 px-2 py-1 text-[11px] text-gray-600 shadow-sm">
           {route.status === "loading"
             ? "Calculating route..."
             : "Route fallback enabled"}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
