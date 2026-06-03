@@ -28,8 +28,7 @@ app.use(
   cors({
     origin: [
       'http://localhost:3000',
-      'https://flash-go-delivery-eth.up.railway.app',
-      
+      'https://flash-go-delivery-eth.up.railway.app/',
     ],
     credentials: true,
     allowHeaders: ['Content-Type', 'Authorization'],
