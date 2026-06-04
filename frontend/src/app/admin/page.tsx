@@ -65,7 +65,7 @@ export default function AdminOverviewPage() {
               <p className="text-xl font-bold sm:text-2xl">{stats.loaded}</p>
             )}
             <CardDescription className="mt-1 text-xs leading-snug">
-              Rows in this response (not necessarily total in DB).
+              Rows in this response.
             </CardDescription>
           </CardContent>
         </Card>
