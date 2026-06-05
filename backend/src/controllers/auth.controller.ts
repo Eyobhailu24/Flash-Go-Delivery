@@ -720,11 +720,16 @@ export const resetPassword = async (c: Context) => {
 };
 
 export const logout = async (c: Context) => {
+  const sameSite = getSameSite();
   deleteCookie(c, 'access_token', {
     path: '/',
+    secure: cookieSecure,
+    sameSite,
   });
   deleteCookie(c, 'refresh_token', {
     path: '/',
+    secure: cookieSecure,
+    sameSite,
   });
   return c.json({ message: 'Logged out successfully.' });
 };
