@@ -3,8 +3,9 @@
 import { format } from "date-fns";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
 import type { AdminOrderDetail } from "@/app/admin/_hooks/use-admin-orders";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +17,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchBusinessOrderById } from "@/lib/business-orders-api";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  approveBusinessOrder,
+  fetchBusinessOrderById,
+  rejectBusinessOrder,
+} from "@/lib/business-orders-api";
 import { AuthApiError } from "@/lib/auth-api";
 import { formatBirr } from "@/lib/currency";
 
@@ -35,34 +42,44 @@ export default function BusinessOrderDetailPage() {
   const [detail, setDetail] = useState<AdminOrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rejectNote, setRejectNote] = useState("");
+  const [acting, setActing] = useState(false);
+
+  const loadDetail = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
+    try {
+      const d = await fetchBusinessOrderById(orderId);
+      setDetail(d);
+    } catch (e) {
+      if (!silent) {
+        setDetail(null);
+        setError(
+          e instanceof AuthApiError ? e.message : "Could not load order.",
+        );
+      }
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [orderId]);
 
   useEffect(() => {
     if (!idValid) {
       setLoading(false);
       return;
     }
-    let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const d = await fetchBusinessOrderById(orderId);
-        if (!cancelled) setDetail(d);
-      } catch (e) {
-        if (!cancelled) {
-          setDetail(null);
-          setError(
-            e instanceof AuthApiError ? e.message : "Could not load order.",
-          );
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [orderId, idValid]);
+    void loadDetail();
+  }, [idValid, loadDetail]);
+
+  useEffect(() => {
+    if (!idValid) return;
+    const interval = window.setInterval(() => {
+      void loadDetail(true);
+    }, 8000);
+    return () => window.clearInterval(interval);
+  }, [idValid, loadDetail]);
 
   if (!idValid) {
     return (
@@ -96,6 +113,7 @@ export default function BusinessOrderDetailPage() {
   }
 
   const { order, items, payment, customer, driver } = detail;
+  const canDecide = Boolean(order.canApprove || order.canReject);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -149,6 +167,85 @@ export default function BusinessOrderDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {canDecide ? (
+        <Card className="rounded-2xl border-none shadow-md">
+          <CardHeader>
+            <CardTitle>Approve or reject</CardTitle>
+            <CardDescription>
+              Confirm you can fulfill this order, or reject with a note for the
+              customer.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button
+              type="button"
+              className="rounded-xl"
+              disabled={acting}
+              onClick={() => {
+                void (async () => {
+                  setActing(true);
+                  try {
+                    const result = await approveBusinessOrder(orderId);
+                    setDetail(result);
+                    toast.success(result.message || "Order approved.");
+                  } catch (e) {
+                    toast.error(
+                      e instanceof AuthApiError
+                        ? e.message
+                        : "Could not approve order.",
+                    );
+                  } finally {
+                    setActing(false);
+                  }
+                })();
+              }}
+            >
+              Approve order
+            </Button>
+            <div className="space-y-2">
+              <Label htmlFor="reject-note">Rejection note</Label>
+              <Textarea
+                id="reject-note"
+                value={rejectNote}
+                onChange={(e) => setRejectNote(e.target.value)}
+                placeholder="e.g. Item is out of stock"
+                className="min-h-24 rounded-xl"
+              />
+              <Button
+                type="button"
+                variant="destructive"
+                className="rounded-xl"
+                disabled={acting || rejectNote.trim().length === 0}
+                onClick={() => {
+                  void (async () => {
+                    setActing(true);
+                    try {
+                      const result = await rejectBusinessOrder(
+                        orderId,
+                        rejectNote.trim(),
+                      );
+                      setDetail(result);
+                      setRejectNote("");
+                      toast.success(result.message || "Order rejected.");
+                    } catch (e) {
+                      toast.error(
+                        e instanceof AuthApiError
+                          ? e.message
+                          : "Could not reject order.",
+                      );
+                    } finally {
+                      setActing(false);
+                    }
+                  })();
+                }}
+              >
+                Reject order
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="rounded-2xl border-none shadow-md">
         <CardHeader>

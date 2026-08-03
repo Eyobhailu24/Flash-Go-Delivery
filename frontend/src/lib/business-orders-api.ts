@@ -31,3 +31,29 @@ export async function fetchBusinessOrderById(
   );
   return readAuthJson<AdminOrderDetail>(res);
 }
+
+export async function approveBusinessOrder(
+  id: string,
+): Promise<AdminOrderDetail & { message: string; offeredDriversCount?: number }> {
+  const res = await authFetch(
+    `/orders/business/${encodeURIComponent(id)}/approve`,
+    { method: "POST" },
+  );
+  return readAuthJson<
+    AdminOrderDetail & { message: string; offeredDriversCount?: number }
+  >(res);
+}
+
+export async function rejectBusinessOrder(
+  id: string,
+  note: string,
+): Promise<AdminOrderDetail & { message: string }> {
+  const res = await authFetch(
+    `/orders/business/${encodeURIComponent(id)}/reject`,
+    {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    },
+  );
+  return readAuthJson<AdminOrderDetail & { message: string }>(res);
+}

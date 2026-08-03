@@ -33,6 +33,16 @@ export const orders = pgTable(
     dropoffLat: numeric("dropoff_lat", { precision: 10, scale: 7 }),
     dropoffLng: numeric("dropoff_lng", { precision: 10, scale: 7 }),
     deliveryCodeHash: text("delivery_code_hash"),
+    cancelExpiresAt: timestamp("cancel_expires_at", { withTimezone: true }),
+    businessRespondedAt: timestamp("business_responded_at", {
+      withTimezone: true,
+    }),
+    businessRejectionNote: text("business_rejection_note"),
+    businessNotifiedAt: timestamp("business_notified_at", {
+      withTimezone: true,
+    }),
+    cancelledBy: text("cancelled_by"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -41,5 +51,9 @@ export const orders = pgTable(
     index("orders_customer_created_idx").on(table.customerId, table.createdAt),
     index("orders_driver_status_idx").on(table.driverId, table.status),
     index("orders_business_status_idx").on(table.businessId, table.status),
+    index("orders_cancel_expires_status_idx").on(
+      table.status,
+      table.cancelExpiresAt,
+    ),
   ]
 );

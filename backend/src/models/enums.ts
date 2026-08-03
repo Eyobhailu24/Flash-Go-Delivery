@@ -23,6 +23,9 @@ export const orderTypeEnum = pgEnum("order_type", ["food", "package", "shop"]);
 
 export const orderStatusEnum = pgEnum("order_status", [
   "pending",
+  "pending_confirmation",
+  "awaiting_business",
+  "business_approved",
   "accepted",
   "in_transit",
   "delivered",

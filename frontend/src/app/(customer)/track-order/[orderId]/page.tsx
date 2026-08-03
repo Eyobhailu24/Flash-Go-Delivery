@@ -33,13 +33,23 @@ function formatOrderDate(input: string): string {
 function statusBadgeClass(status: CustomerOrder["status"]): string {
   if (status === "delivered") return "bg-green-100 text-green-700";
   if (status === "in_transit") return "bg-blue-100 text-blue-700";
-  if (status === "accepted") return "bg-amber-100 text-amber-700";
+  if (status === "accepted" || status === "business_approved")
+    return "bg-amber-100 text-amber-700";
   if (status === "cancelled") return "bg-red-100 text-red-700";
+  if (status === "awaiting_business") return "bg-purple-100 text-purple-700";
+  if (status === "pending_confirmation") return "bg-orange-100 text-orange-800";
   return "bg-orange-100 text-orange-700";
 }
 
 function paymentStatusLabel(status: string): string {
-  return status.replace("_", " ").replace(/^\w/, (char) => char.toUpperCase());
+  return status.replace(/_/g, " ").replace(/^\w/, (char) => char.toUpperCase());
+}
+
+function formatCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function OrderDetailSkeleton() {
@@ -72,6 +82,7 @@ export default function CustomerTrackOrderDetailPage() {
     loadingTracking,
     loadOrderById,
     loadOrderTracking,
+    cancelOrder,
     submitDriverFeedback,
   } = useOrders();
   const {
@@ -82,6 +93,8 @@ export default function CustomerTrackOrderDetailPage() {
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackComment, setFeedbackComment] = useState("");
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const firstName = user?.fullName?.split(" ")[0] ?? "Guest";
   const todayLabel = useMemo(
@@ -155,6 +168,23 @@ export default function CustomerTrackOrderDetailPage() {
     setFeedbackRating(selectedOrder.driverFeedback.rating);
     setFeedbackComment(selectedOrder.driverFeedback.comment ?? "");
   }, [selectedOrder?.driverFeedback]);
+
+  const cancelExpiresAt =
+    selectedOrder?.order.cancelExpiresAt ?? tracking?.cancelExpiresAt ?? null;
+  const canCancel =
+    Boolean(selectedOrder?.order.canCancel ?? tracking?.canCancel) &&
+    Boolean(cancelExpiresAt) &&
+    new Date(cancelExpiresAt!).getTime() > nowMs;
+
+  useEffect(() => {
+    if (!cancelExpiresAt) return;
+    const tick = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(tick);
+  }, [cancelExpiresAt]);
+
+  const remainingMs = cancelExpiresAt
+    ? new Date(cancelExpiresAt).getTime() - nowMs
+    : 0;
 
   if (!isReady) {
     return (
@@ -239,6 +269,7 @@ export default function CustomerTrackOrderDetailPage() {
                     destination={tracking.destination}
                     driverLocation={tracking.driver?.location ?? null}
                     status={tracking.status}
+                    orderType={tracking.orderType}
                   />
                 ) : (
                   <Skeleton className="h-[300px] rounded-2xl bg-orange-100/70" />
@@ -253,6 +284,58 @@ export default function CustomerTrackOrderDetailPage() {
                       : "Waiting for live driver location updates."}
                 </p>
               </div>
+
+              {canCancel ? (
+                <div className="flex flex-col gap-3 rounded-xl border border-orange-200 bg-orange-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">
+                      Cancel available for {formatCountdown(remainingMs)}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      After this window, the restaurant will review your order.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="rounded-xl"
+                    disabled={cancelling}
+                    onClick={() => {
+                      void (async () => {
+                        setCancelling(true);
+                        try {
+                          await cancelOrder(orderId);
+                          toast.success("Order cancelled.");
+                        } catch (e) {
+                          toast.error(
+                            e instanceof Error
+                              ? e.message
+                              : "Could not cancel order.",
+                          );
+                        } finally {
+                          setCancelling(false);
+                        }
+                      })();
+                    }}
+                  >
+                    {cancelling ? <Spinner className="size-4" /> : null}
+                    Cancel order
+                  </Button>
+                </div>
+              ) : null}
+
+              {selectedOrder.order.status === "awaiting_business" ? (
+                <p className="rounded-xl bg-orange-50 px-3 py-2 text-sm text-gray-700">
+                  Waiting for the restaurant to approve your order.
+                </p>
+              ) : null}
+
+              {selectedOrder.order.status === "cancelled" &&
+              selectedOrder.order.businessRejectionNote ? (
+                <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  Restaurant note: {selectedOrder.order.businessRejectionNote}
+                </p>
+              ) : null}
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-xl border border-orange-100 bg-white p-3">

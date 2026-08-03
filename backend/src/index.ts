@@ -16,6 +16,7 @@ import { orderRoutes } from './routes/order.routes.js';
 import { paymentRoutes } from './routes/payment.routes.js';
 import { driverDispatchRoutes } from './routes/driver-dispatch.routes.js';
 import { notificationsRoutes } from './routes/notifications.routes.js';
+import { promoteDueCustomerCancelOrders } from './lib/orderConfirmation.js';
 // Telegram bot disabled locally to avoid Grammy 409 (duplicate getUpdates).
 // Re-enable when only one bot instance uses this token: import './bot/index.js';
 
@@ -116,5 +117,10 @@ serve(
     console.log(
       `Backend running on http://localhost:${port}`,
     );
+    setInterval(() => {
+      void promoteDueCustomerCancelOrders().catch((err) => {
+        console.error('[order-confirmation] promote failed', err);
+      });
+    }, 15_000);
   },
 );

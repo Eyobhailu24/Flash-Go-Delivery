@@ -5,6 +5,9 @@ import { authFetch, readAuthJson } from "@/lib/auth-api";
 
 type OrderStatus =
   | "pending"
+  | "pending_confirmation"
+  | "awaiting_business"
+  | "business_approved"
   | "accepted"
   | "in_transit"
   | "delivered"
@@ -44,6 +47,11 @@ export type CustomerOrderTracking = {
   orderId: string;
   status: OrderStatus;
   orderType: "food" | "package" | "shop";
+  cancelExpiresAt?: string | null;
+  canCancel?: boolean;
+  canApprove?: boolean;
+  canReject?: boolean;
+  canAdminCancel?: boolean;
   pickup: {
     address: string;
     latitude: number | null;
@@ -86,6 +94,14 @@ export type CustomerOrder = {
   dropoffAddress: string | null;
   dropoffLat: string | null;
   dropoffLng: string | null;
+  cancelExpiresAt?: string | null;
+  businessRejectionNote?: string | null;
+  cancelledBy?: string | null;
+  cancelledAt?: string | null;
+  canCancel?: boolean;
+  canApprove?: boolean;
+  canReject?: boolean;
+  canAdminCancel?: boolean;
   createdAt: string;
   payment: PaymentSummary | null;
   business: BusinessSummary | null;
@@ -152,6 +168,17 @@ async function postDriverFeedback(
   }>(response);
 }
 
+async function postCancelMyOrder(orderId: string): Promise<{
+  order: CustomerOrder;
+  message: string;
+}> {
+  const response = await authFetch(
+    `/orders/${encodeURIComponent(orderId)}/cancel`,
+    { method: "POST" },
+  );
+  return readAuthJson<{ order: CustomerOrder; message: string }>(response);
+}
+
 export function useOrders() {
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<CustomerOrderDetail | null>(
@@ -189,7 +216,12 @@ export function useOrders() {
         if (!prev || prev.order.id !== orderId) return prev;
         return {
           ...prev,
-          order: { ...prev.order, status: data.status },
+          order: {
+            ...prev.order,
+            status: data.status,
+            cancelExpiresAt: data.cancelExpiresAt ?? prev.order.cancelExpiresAt,
+            canCancel: data.canCancel ?? prev.order.canCancel,
+          },
           payment: data.payment ?? prev.payment,
         };
       });
@@ -230,6 +262,45 @@ export function useOrders() {
     [],
   );
 
+  const cancelOrder = useCallback(async (orderId: string) => {
+    const result = await postCancelMyOrder(orderId);
+    setSelectedOrder((prev) => {
+      if (!prev || prev.order.id !== orderId) return prev;
+      return {
+        ...prev,
+        order: {
+          ...prev.order,
+          ...result.order,
+          payment: prev.order.payment,
+          business: prev.order.business,
+          driver: prev.order.driver,
+        },
+      };
+    });
+    setTracking((prev) => {
+      if (!prev || prev.orderId !== orderId) return prev;
+      return {
+        ...prev,
+        status: result.order.status,
+        canCancel: false,
+      };
+    });
+    setOrders((prev) =>
+      prev.map((row) =>
+        row.id === orderId
+          ? {
+              ...row,
+              ...result.order,
+              payment: row.payment,
+              business: row.business,
+              driver: row.driver,
+            }
+          : row,
+      ),
+    );
+    return result;
+  }, []);
+
   const submitDriverFeedback = useCallback(
     async (input: SubmitDriverFeedbackInput) => {
       const result = await postDriverFeedback(input);
@@ -263,11 +334,13 @@ export function useOrders() {
       loadOrders,
       loadOrderById,
       loadOrderTracking,
+      cancelOrder,
       submitDriverFeedback,
       setSelectedOrder,
       setTracking,
     }),
     [
+      cancelOrder,
       error,
       loadOrderById,
       loadOrderTracking,

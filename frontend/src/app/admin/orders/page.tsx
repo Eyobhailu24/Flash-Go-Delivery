@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import {
   fetchAdminOrderById,
   fetchAvailableDrivers,
+  cancelAdminOrder,
   patchAdminOrder,
   useAdminOrders,
   type AdminOrderDetail,
@@ -91,7 +92,17 @@ function statusVariant(
   if (status === "delivered") return "secondary";
   if (status === "cancelled") return "destructive";
   if (status === "in_transit") return "default";
+  if (status === "business_approved") return "default";
+  if (status === "awaiting_business") return "secondary";
   return "outline";
+}
+
+function driverAssignable(status: AdminOrderRow["status"]): boolean {
+  return (
+    status === "pending" ||
+    status === "business_approved" ||
+    status === "accepted"
+  );
 }
 
 function detailFromWorking(detail: AdminOrderDetail, lines: WorkingLine[]) {
@@ -130,6 +141,7 @@ export default function AdminOrdersPage() {
   const [driverDraft, setDriverDraft] = useState<string>("__none__");
   const [savingItems, setSavingItems] = useState(false);
   const [savingDriver, setSavingDriver] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
   const [catalogQ, setCatalogQ] = useState("");
@@ -269,6 +281,31 @@ export default function AdminOrdersPage() {
       toast.error(msg);
     } finally {
       setSavingDriver(false);
+    }
+  };
+
+  const cancelOrderAsAdmin = async () => {
+    if (!selectedId || !detail) return;
+    if (
+      !window.confirm(
+        "Cancel this order for everyone? This overrides customer and business actions.",
+      )
+    ) {
+      return;
+    }
+    setCancelling(true);
+    try {
+      const next = await cancelAdminOrder(selectedId);
+      setDetail(next);
+      toast.success(next.message || "Order cancelled.");
+      void refetch();
+      void loadDrivers();
+    } catch (e) {
+      const msg =
+        e instanceof AuthApiError ? e.message : "Failed to cancel order.";
+      toast.error(msg);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -596,9 +633,8 @@ export default function AdminOrdersPage() {
                           value={driverDraft}
                           onValueChange={setDriverDraft}
                           disabled={
-                            detail.order.status === "delivered" ||
-                            detail.order.status === "in_transit" ||
-                            detail.order.status === "cancelled"
+                            !driverAssignable(detail.order.status) ||
+                            detail.order.status === "in_transit"
                           }
                         >
                           <SelectTrigger id="driver-select" className="w-full">
@@ -621,9 +657,8 @@ export default function AdminOrdersPage() {
                         type="button"
                         disabled={
                           savingDriver ||
-                          detail.order.status === "delivered" ||
-                          detail.order.status === "in_transit" ||
-                          detail.order.status === "cancelled"
+                          !driverAssignable(detail.order.status) ||
+                          detail.order.status === "in_transit"
                         }
                         onClick={() => void applyDriver()}
                       >
@@ -633,11 +668,52 @@ export default function AdminOrdersPage() {
                         Apply driver
                       </Button>
                     </div>
+                    {detail.order.status === "pending_confirmation" ||
+                    detail.order.status === "awaiting_business" ? (
+                      <p className="text-muted-foreground text-xs">
+                        Drivers can be assigned only after the business approves
+                        the order.
+                      </p>
+                    ) : null}
                     {detail.order.status === "in_transit" ? (
                       <p className="text-muted-foreground text-xs">
                         Driver cannot be changed while the order is in transit.
                       </p>
                     ) : null}
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <h3 className="font-medium">Admin override</h3>
+                    <p className="text-muted-foreground text-xs">
+                      Cancel this order at any stage before delivery. Customer
+                      and business will be notified.
+                    </p>
+                    {detail.order.cancelledBy ? (
+                      <p className="text-sm text-muted-foreground">
+                        Cancelled by {detail.order.cancelledBy}
+                        {detail.order.businessRejectionNote
+                          ? ` · Note: ${detail.order.businessRejectionNote}`
+                          : ""}
+                      </p>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={
+                        cancelling ||
+                        detail.order.status === "delivered" ||
+                        detail.order.status === "cancelled" ||
+                        detail.order.canAdminCancel === false
+                      }
+                      onClick={() => void cancelOrderAsAdmin()}
+                    >
+                      {cancelling ? (
+                        <Loader2Icon className="size-4 animate-spin" />
+                      ) : null}
+                      Cancel order
+                    </Button>
                   </div>
                 </>
               )}

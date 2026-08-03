@@ -6,6 +6,9 @@ import type { LatLngExpression } from "leaflet";
 
 type OrderStatus =
   | "pending"
+  | "pending_confirmation"
+  | "awaiting_business"
+  | "business_approved"
   | "accepted"
   | "in_transit"
   | "delivered"
@@ -21,6 +24,7 @@ type CustomerOrderTrackingMapProps = {
   destination: Point;
   driverLocation: { lat: number; lng: number } | null;
   status: OrderStatus;
+  orderType?: "food" | "package" | "shop";
 };
 
 type RouteState =
@@ -29,12 +33,37 @@ type RouteState =
   | { status: "ready"; points: LatLngExpression[] }
   | { status: "error"; points: LatLngExpression[] };
 
-const steps: Array<{ value: Exclude<OrderStatus, "cancelled">; label: string }> = [
+const foodShopSteps: Array<{
+  value: Exclude<OrderStatus, "cancelled" | "pending">;
+  label: string;
+}> = [
+  { value: "pending_confirmation", label: "Confirming" },
+  { value: "awaiting_business", label: "Restaurant" },
+  { value: "business_approved", label: "Finding driver" },
+  { value: "accepted", label: "Accepted" },
+  { value: "in_transit", label: "In Transit" },
+  { value: "delivered", label: "Delivered" },
+];
+
+const packageSteps: Array<{
+  value: Exclude<
+    OrderStatus,
+    | "cancelled"
+    | "pending_confirmation"
+    | "awaiting_business"
+    | "business_approved"
+  >;
+  label: string;
+}> = [
   { value: "pending", label: "Pending" },
   { value: "accepted", label: "Accepted" },
   { value: "in_transit", label: "In Transit" },
   { value: "delivered", label: "Delivered" },
 ];
+
+function stepsForOrder(orderType: CustomerOrderTrackingMapProps["orderType"]) {
+  return orderType === "package" ? packageSteps : foodShopSteps;
+}
 
 function toLatLng(point: Point): [number, number] | null {
   if (typeof point.latitude !== "number" || typeof point.longitude !== "number") {
@@ -64,13 +93,21 @@ export function CustomerOrderTrackingMap({
   destination,
   driverLocation,
   status,
+  orderType = "food",
 }: CustomerOrderTrackingMapProps) {
-  const pickupLatLng = toLatLng(pickup);
-  const destinationLatLng = toLatLng(destination);
+  const steps = stepsForOrder(orderType);
+  const pickupLatLng = useMemo(
+    () => toLatLng(pickup),
+    [pickup.latitude, pickup.longitude],
+  );
+  const destinationLatLng = useMemo(
+    () => toLatLng(destination),
+    [destination.latitude, destination.longitude],
+  );
   const driverLatLng = useMemo<[number, number] | null>(() => {
     if (!driverLocation) return null;
     return [driverLocation.lat, driverLocation.lng];
-  }, [driverLocation]);
+  }, [driverLocation?.lat, driverLocation?.lng]);
 
   const fallbackRoute = useMemo<LatLngExpression[]>(() => {
     if (!driverLatLng || !destinationLatLng) return [];
@@ -84,7 +121,11 @@ export function CustomerOrderTrackingMap({
 
   useEffect(() => {
     if (!driverLatLng || !destinationLatLng) {
-      setRoute({ status: "idle", points: [] });
+      setRoute((prev) =>
+        prev.status === "idle" && prev.points.length === 0
+          ? prev
+          : { status: "idle", points: [] },
+      );
       return;
     }
     let active = true;
@@ -197,7 +238,9 @@ export function CustomerOrderTrackingMap({
                 }}
               />
             </div>
-            <div className="grid grid-cols-4 gap-1 text-[10px] font-medium text-gray-600">
+            <div className="grid gap-1 text-[10px] font-medium text-gray-600"
+              style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
+            >
               {steps.map((step, index) => {
                 const done = currentStepIndex >= index;
                 return (

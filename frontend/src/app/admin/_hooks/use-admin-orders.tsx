@@ -10,6 +10,9 @@ import type { User } from "@/app/admin/_hooks/use-users";
 
 export type OrderStatus =
   | "pending"
+  | "pending_confirmation"
+  | "awaiting_business"
+  | "business_approved"
   | "accepted"
   | "in_transit"
   | "delivered"
@@ -27,6 +30,16 @@ export type OrderCore = {
   serviceCharge: string;
   routeDistanceKm: string | null;
   packageNote: string | null;
+  cancelExpiresAt?: string | null;
+  businessRespondedAt?: string | null;
+  businessRejectionNote?: string | null;
+  businessNotifiedAt?: string | null;
+  cancelledBy?: string | null;
+  cancelledAt?: string | null;
+  canCancel?: boolean;
+  canApprove?: boolean;
+  canReject?: boolean;
+  canAdminCancel?: boolean;
   createdAt: string;
 };
 
@@ -120,6 +133,16 @@ export async function patchAdminOrder(
     },
   );
   return readAuthJson<AdminOrderDetail>(res);
+}
+
+export async function cancelAdminOrder(
+  id: string,
+): Promise<AdminOrderDetail & { message: string }> {
+  const res = await authFetch(
+    `/orders/admin/${encodeURIComponent(id)}/cancel`,
+    { method: "POST" },
+  );
+  return readAuthJson<AdminOrderDetail & { message: string }>(res);
 }
 
 export async function fetchAvailableDrivers(): Promise<User[]> {

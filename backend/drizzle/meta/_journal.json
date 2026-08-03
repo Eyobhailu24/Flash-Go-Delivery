@@ -127,6 +127,13 @@
       "when": 1778200000000,
       "tag": "0017_orders_delivery_code_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1778300000000,
+      "tag": "0018_order_confirmation_flow",
+      "breakpoints": true
     }
   ]
 }

@@ -30,7 +30,8 @@ import { formatBirr } from "@/lib/currency";
 function statusBadge(status: AdminOrderRow["status"]) {
   if (status === "delivered") return "secondary" as const;
   if (status === "cancelled") return "destructive" as const;
-  if (status === "in_transit") return "default" as const;
+  if (status === "in_transit" || status === "awaiting_business")
+    return "default" as const;
   return "outline" as const;
 }
 
@@ -41,23 +42,30 @@ export default function BusinessOrdersPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      setError(null);
+    const load = async (silent = false) => {
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
       try {
         const data = await fetchBusinessOrders({ limit: 100, offset: 0 });
         if (!cancelled) setOrders(data.orders);
       } catch (e) {
-        if (!cancelled) {
+        if (!cancelled && !silent) {
           setOrders([]);
           setError(e instanceof AuthApiError ? e.message : "Could not load orders.");
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !silent) setLoading(false);
       }
-    })();
+    };
+    void load();
+    const interval = window.setInterval(() => {
+      void load(true);
+    }, 8000);
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
   }, []);
 
@@ -74,8 +82,8 @@ export default function BusinessOrdersPage() {
             Orders
           </h1>
           <p className="max-w-xl text-sm text-gray-600">
-            When customers check out from your business, those orders appear
-            here with status and payment details.
+            New orders appear here after the customer&apos;s 1-minute cancel
+            window. Approve or reject from the order detail page.
           </p>
         </div>
       </section>
@@ -135,8 +143,21 @@ export default function BusinessOrdersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button asChild size="sm" variant="outline" className="rounded-lg">
-                        <Link href={`/business/orders/${o.id}`}>Details</Link>
+                      <Button
+                        asChild
+                        size="sm"
+                        variant={
+                          o.status === "awaiting_business"
+                            ? "default"
+                            : "outline"
+                        }
+                        className="rounded-lg"
+                      >
+                        <Link href={`/business/orders/${o.id}`}>
+                          {o.status === "awaiting_business"
+                            ? "Review"
+                            : "Details"}
+                        </Link>
                       </Button>
                     </TableCell>
                   </TableRow>

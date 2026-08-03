@@ -28,13 +28,14 @@ function formatOrderDate(input: string): string {
 function statusBadgeClass(status: CustomerOrder["status"]): string {
   if (status === "delivered") return "bg-green-100 text-green-700";
   if (status === "in_transit") return "bg-blue-100 text-blue-700";
-  if (status === "accepted") return "bg-amber-100 text-amber-700";
+  if (status === "accepted" || status === "business_approved")
+    return "bg-amber-100 text-amber-700";
   if (status === "cancelled") return "bg-red-100 text-red-700";
   return "bg-orange-100 text-orange-700";
 }
 
 function paymentStatusLabel(status: string): string {
-  return status.replace("_", " ").replace(/^\w/, (char) => char.toUpperCase());
+  return status.replace(/_/g, " ").replace(/^\w/, (char) => char.toUpperCase());
 }
 
 export default function CustomerTrackOrderPage() {

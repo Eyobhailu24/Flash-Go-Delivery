@@ -1,8 +1,18 @@
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { createHash, randomInt } from "node:crypto";
 import { z } from "zod";
 import { db } from "../db.js";
+import {
+  cancelOpenDriverOffers,
+  computeCancelExpiresAt,
+  markOrderPaymentFailed,
+  orderActionFlags,
+  promoteDueCustomerCancelOrders,
+  releaseDriverIfAssigned,
+  startDriverDispatchForOrder,
+  withOrderActionFlags,
+} from "../lib/orderConfirmation.js";
 import type { AuthUser } from "../middleware/auth.middleware.js";
 import {
   categoryItems,
@@ -350,7 +360,6 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
   }
   const activeCart = estimate.cart;
   const subtotal = estimate.subtotal;
-  const businessCoords = estimate.businessCoords;
   const routeDistanceKm = estimate.routeDistanceKm;
   const deliveryFee = estimate.deliveryFee;
   const serviceCharge = estimate.serviceCharge;
@@ -378,27 +387,8 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
     .where(eq(users.id, customerId))
     .limit(1);
   const deliveryCode = generateDeliveryCode();
-
-  const driverCandidates = await db
-    .select({
-      id: users.id,
-      location: driverLocations.location,
-    })
-    .from(users)
-    .innerJoin(driverProfile, eq(driverProfile.userId, users.id))
-    .innerJoin(driverLocations, eq(driverLocations.driverId, users.id))
-    .where(
-      and(
-        eq(users.role, "driver"),
-        eq(users.status, "active"),
-        eq(driverProfile.isAvailable, true),
-      ),
-    );
-
-  const rankedDrivers = rankDriversByDistanceToPoint(
-    driverCandidates,
-    businessCoords,
-  );
+  const now = new Date();
+  const cancelExpiresAt = computeCancelExpiresAt(now);
 
   const result = await db.transaction(async (tx) => {
     const createdOrders = await tx
@@ -408,12 +398,13 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
         businessId: activeCart.businessId,
         driverId: null,
         orderType,
-        status: "pending",
+        status: "pending_confirmation",
         totalPrice: toMoneyString(subtotal),
         deliveryFee: toMoneyString(deliveryFee),
         serviceCharge: toMoneyString(serviceCharge),
         routeDistanceKm: toMoneyString(routeDistanceKm),
         deliveryCodeHash: hashDeliveryCode(deliveryCode),
+        cancelExpiresAt,
       })
       .returning();
     const createdOrder = createdOrders[0];
@@ -445,37 +436,12 @@ export const checkoutOrder = async (c: Context<OrderEnv>) => {
       .set({ status: "checked_out" })
       .where(eq(carts.id, activeCart.id));
 
-    if (rankedDrivers.length > 0) {
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + 30_000);
-      await tx.insert(orderDriverOffers).values(
-        rankedDrivers.map((driver, index) => ({
-          orderId: createdOrder.id,
-          driverId: driver.driverId,
-          rank: index + 1,
-          status: index === 0 ? "pending" : "queued",
-          distanceToBusinessKm: driver.distanceToBusinessKm.toFixed(2),
-          offeredAt: index === 0 ? now : null,
-          expiresAt: index === 0 ? expiresAt : null,
-        })),
-      );
-
-      const firstDriver = rankedDrivers[0];
-      await tx.insert(notifications).values({
-        userId: firstDriver.driverId,
-        type: "order_incoming",
-        title: "Order incoming",
-        message:
-          "A new nearby delivery request is waiting for your response.",
-      });
-    }
-
     return {
-      order: createdOrder,
+      order: withOrderActionFlags(createdOrder, now),
       payment: createdPayments[0],
       orderItemsCount: values.length,
       assignedDriverId: null,
-      offeredDriversCount: rankedDrivers.length,
+      offeredDriversCount: 0,
     };
   });
 
@@ -633,6 +599,7 @@ export const createPackageOrder = async (c: Context<OrderEnv>) => {
 };
 
 export const getMyOrders = async (c: Context<OrderEnv>) => {
+  await promoteDueCustomerCancelOrders();
   const rows = await db
     .select()
     .from(orders)
@@ -709,6 +676,7 @@ export const getMyOrders = async (c: Context<OrderEnv>) => {
   const driverProfileById = new Map(
     driverProfileRows.map((profile) => [profile.userId, profile]),
   );
+  const now = new Date();
 
   return c.json({
     orders: rows.map((order) => {
@@ -722,7 +690,7 @@ export const getMyOrders = async (c: Context<OrderEnv>) => {
         ? driverProfileById.get(order.driverId)
         : null;
       return {
-        ...order,
+        ...withOrderActionFlags(order, now),
         payment: paymentByOrderId.get(order.id) ?? null,
         business: business
           ? {
@@ -750,6 +718,8 @@ export const getMyOrderById = async (c: Context<OrderEnv>) => {
   if (!params.success) {
     return c.json({ message: "Invalid order id." }, 400);
   }
+
+  await promoteDueCustomerCancelOrders();
 
   const rows = await db
     .select()
@@ -835,7 +805,7 @@ export const getMyOrderById = async (c: Context<OrderEnv>) => {
   const driverExtra = driverProfileRows[0] ?? null;
 
   return c.json({
-    order,
+    order: withOrderActionFlags(order),
     items: relatedItems,
     payment: paymentRows[0] ?? null,
     business: business
@@ -863,6 +833,8 @@ export const getMyOrderTracking = async (c: Context<OrderEnv>) => {
   if (!params.success) {
     return c.json({ message: "Invalid order id." }, 400);
   }
+
+  await promoteDueCustomerCancelOrders();
 
   const orderRows = await db
     .select()
@@ -978,6 +950,8 @@ export const getMyOrderTracking = async (c: Context<OrderEnv>) => {
     orderId: order.id,
     status: order.status,
     orderType: order.orderType,
+    cancelExpiresAt: order.cancelExpiresAt,
+    ...orderActionFlags(order),
     pickup,
     destination,
     driver,
@@ -1120,6 +1094,8 @@ export const listAdminOrders = async (c: Context<OrderEnv>) => {
   const limit = Math.min(Math.max(Number(limitRaw ?? 50) || 50, 1), 200);
   const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
 
+  await promoteDueCustomerCancelOrders();
+
   const rows = await db
     .select()
     .from(orders)
@@ -1212,6 +1188,7 @@ export const listAdminOrders = async (c: Context<OrderEnv>) => {
   const customerById = new Map(
     customerRows.map((customer) => [customer.id, customer]),
   );
+  const now = new Date();
 
   return c.json({
     orders: rows.map((order) => {
@@ -1226,7 +1203,7 @@ export const listAdminOrders = async (c: Context<OrderEnv>) => {
         : null;
       const customer = customerById.get(order.customerId);
       return {
-        ...order,
+        ...withOrderActionFlags(order, now),
         payment: paymentByOrderId.get(order.id) ?? null,
         business: business
           ? {
@@ -1263,6 +1240,8 @@ export const getAdminOrderById = async (c: Context<OrderEnv>) => {
   if (!params.success) {
     return c.json({ message: "Invalid order id." }, 400);
   }
+
+  await promoteDueCustomerCancelOrders();
 
   const rows = await db
     .select()
@@ -1336,7 +1315,7 @@ export const getAdminOrderById = async (c: Context<OrderEnv>) => {
   const customer = customerRows[0] ?? null;
 
   return c.json({
-    order,
+    order: withOrderActionFlags(order),
     items: relatedItems,
     payment: paymentRows[0] ?? null,
     business: business
@@ -1372,10 +1351,17 @@ export const listBusinessOrders = async (c: Context<OrderEnv>) => {
   const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
   const businessUserId = c.var.user.id;
 
+  await promoteDueCustomerCancelOrders();
+
   const rows = await db
     .select()
     .from(orders)
-    .where(eq(orders.businessId, businessUserId))
+    .where(
+      and(
+        eq(orders.businessId, businessUserId),
+        ne(orders.status, "pending_confirmation"),
+      ),
+    )
     .orderBy(desc(orders.createdAt))
     .limit(limit)
     .offset(offset);
@@ -1465,6 +1451,7 @@ export const listBusinessOrders = async (c: Context<OrderEnv>) => {
   const customerById = new Map(
     customerRows.map((customer) => [customer.id, customer]),
   );
+  const now = new Date();
 
   return c.json({
     orders: rows.map((order) => {
@@ -1477,7 +1464,7 @@ export const listBusinessOrders = async (c: Context<OrderEnv>) => {
         : null;
       const customer = customerById.get(order.customerId);
       return {
-        ...order,
+        ...withOrderActionFlags(order, now),
         payment: paymentByOrderId.get(order.id) ?? null,
         business: business
           ? {
@@ -1515,6 +1502,8 @@ export const getBusinessOrderById = async (c: Context<OrderEnv>) => {
     return c.json({ message: "Invalid order id." }, 400);
   }
 
+  await promoteDueCustomerCancelOrders();
+
   const rows = await db
     .select()
     .from(orders)
@@ -1528,6 +1517,12 @@ export const getBusinessOrderById = async (c: Context<OrderEnv>) => {
   const order = rows[0];
   if (!order) {
     return c.json({ message: "Order not found." }, 404);
+  }
+  if (order.status === "pending_confirmation") {
+    return c.json(
+      { message: "Order is still in the customer cancellation window." },
+      409,
+    );
   }
 
   const relatedItems = await db
@@ -1592,7 +1587,7 @@ export const getBusinessOrderById = async (c: Context<OrderEnv>) => {
   const customer = customerRows[0] ?? null;
 
   return c.json({
-    order,
+    order: withOrderActionFlags(order),
     items: relatedItems,
     payment: paymentRows[0] ?? null,
     business: business
@@ -1675,7 +1670,11 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
   }
 
   if (parsed.data.driverId !== undefined) {
-    if (existing.status === "delivered") {
+    if (
+      existing.status === "delivered" ||
+      existing.status === "pending_confirmation" ||
+      existing.status === "awaiting_business"
+    ) {
       return c.json(
         { message: "Driver cannot be changed for this order status." },
         409,
@@ -1856,17 +1855,25 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
           }
 
           if (newDriverId === null) {
+            const unassignStatus =
+              fresh.status === "accepted"
+                ? fresh.businessId
+                  ? "business_approved"
+                  : "pending"
+                : fresh.status;
             await tx
               .update(orders)
               .set({
                 driverId: null,
-                status:
-                  fresh.status === "accepted" ? "pending" : fresh.status,
+                status: unassignStatus,
               })
               .where(eq(orders.id, orderId));
           } else {
             const nextStatus =
-              fresh.status === "pending" ? "accepted" : fresh.status;
+              fresh.status === "pending" ||
+              fresh.status === "business_approved"
+                ? "accepted"
+                : fresh.status;
             await tx
               .update(orders)
               .set({ driverId: newDriverId, status: nextStatus })
@@ -1980,7 +1987,7 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
   const customer = customerRows[0] ?? null;
 
   return c.json({
-    order,
+    order: withOrderActionFlags(order),
     items: relatedItems,
     payment: finalPaymentRows[0] ?? null,
     business: business
@@ -2006,5 +2013,398 @@ export const patchAdminOrder = async (c: Context<OrderEnv>) => {
           vehicleType: driverExtra?.vehicleType ?? null,
         }
       : null,
+  });
+};
+
+const businessRejectSchema = z.object({
+  note: z.string().trim().min(1).max(1000),
+});
+
+async function loadOrderDetailPayload(orderId: string) {
+  const refreshed = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+  const order = refreshed[0];
+  if (!order) return null;
+
+  const relatedItems = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
+  const paymentRows = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.orderId, orderId))
+    .limit(1);
+  const [businessRows, driverRows, driverProfileRows, customerRows] =
+    await Promise.all([
+      order.businessId
+        ? db
+            .select({
+              userId: businessProfile.userId,
+              businessName: businessProfile.businessName,
+              address: businessProfile.address,
+            })
+            .from(businessProfile)
+            .where(eq(businessProfile.userId, order.businessId))
+            .limit(1)
+        : Promise.resolve([]),
+      order.driverId
+        ? db
+            .select({
+              id: users.id,
+              fullName: users.fullName,
+              phoneNumber: users.phoneNumber,
+            })
+            .from(users)
+            .where(eq(users.id, order.driverId))
+            .limit(1)
+        : Promise.resolve([]),
+      order.driverId
+        ? db
+            .select({
+              userId: driverProfile.userId,
+              isAvailable: driverProfile.isAvailable,
+              rating: driverProfile.rating,
+              vehicleType: driverProfile.vehicleType,
+            })
+            .from(driverProfile)
+            .where(eq(driverProfile.userId, order.driverId))
+            .limit(1)
+        : Promise.resolve([]),
+      db
+        .select({
+          id: users.id,
+          fullName: users.fullName,
+          phoneNumber: users.phoneNumber,
+        })
+        .from(users)
+        .where(eq(users.id, order.customerId))
+        .limit(1),
+    ]);
+
+  const business = businessRows[0] ?? null;
+  const driver = driverRows[0] ?? null;
+  const driverExtra = driverProfileRows[0] ?? null;
+  const customer = customerRows[0] ?? null;
+
+  return {
+    order: withOrderActionFlags(order),
+    items: relatedItems,
+    payment: paymentRows[0] ?? null,
+    business: business
+      ? {
+          name: business.businessName,
+          address: business.address,
+        }
+      : null,
+    customer: customer
+      ? {
+          id: customer.id,
+          fullName: customer.fullName,
+          phoneNumber: customer.phoneNumber,
+        }
+      : null,
+    driver: driver
+      ? {
+          id: driver.id,
+          fullName: driver.fullName,
+          phoneNumber: driver.phoneNumber,
+          isAvailable: driverExtra?.isAvailable ?? null,
+          rating: driverExtra?.rating ?? null,
+          vehicleType: driverExtra?.vehicleType ?? null,
+        }
+      : null,
+  };
+}
+
+export const cancelMyOrder = async (c: Context<OrderEnv>) => {
+  const params = orderIdParamSchema.safeParse(c.req.param());
+  if (!params.success) {
+    return c.json({ message: "Invalid order id." }, 400);
+  }
+
+  await promoteDueCustomerCancelOrders();
+  const now = new Date();
+
+  const [existing] = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.id, params.data.id),
+        eq(orders.customerId, c.var.user.id),
+      ),
+    )
+    .limit(1);
+  if (!existing) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+
+  const flags = orderActionFlags(existing, now);
+  if (!flags.canCancel) {
+    return c.json(
+      {
+        message:
+          existing.status === "pending_confirmation"
+            ? "The cancellation window has expired."
+            : "This order can no longer be cancelled.",
+      },
+      409,
+    );
+  }
+
+  const [updated] = await db
+    .update(orders)
+    .set({
+      status: "cancelled",
+      cancelledBy: "customer",
+      cancelledAt: now,
+    })
+    .where(
+      and(
+        eq(orders.id, existing.id),
+        eq(orders.status, "pending_confirmation"),
+      ),
+    )
+    .returning();
+
+  if (!updated) {
+    return c.json({ message: "The cancellation window has expired." }, 409);
+  }
+
+  await markOrderPaymentFailed(existing.id);
+
+  return c.json({
+    order: withOrderActionFlags(updated, now),
+    message: "Order cancelled.",
+  });
+};
+
+export const approveBusinessOrder = async (c: Context<OrderEnv>) => {
+  const params = orderIdParamSchema.safeParse(c.req.param());
+  if (!params.success) {
+    return c.json({ message: "Invalid order id." }, 400);
+  }
+
+  await promoteDueCustomerCancelOrders();
+  const now = new Date();
+
+  const [existing] = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.id, params.data.id),
+        eq(orders.businessId, c.var.user.id),
+      ),
+    )
+    .limit(1);
+  if (!existing) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+  if (!orderActionFlags(existing, now).canApprove) {
+    return c.json(
+      { message: "This order is not waiting for business approval." },
+      409,
+    );
+  }
+
+  let offeredDriversCount = 0;
+  try {
+    await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(orders)
+        .set({
+          status: "business_approved",
+          businessRespondedAt: now,
+        })
+        .where(
+          and(
+            eq(orders.id, existing.id),
+            eq(orders.status, "awaiting_business"),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        throw new Error("approve_race");
+      }
+      const dispatch = await startDriverDispatchForOrder(existing.id, tx);
+      offeredDriversCount = dispatch.offeredDriversCount;
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === "approve_race") {
+      return c.json(
+        { message: "This order is not waiting for business approval." },
+        409,
+      );
+    }
+    throw err;
+  }
+
+  const payload = await loadOrderDetailPayload(existing.id);
+  if (!payload) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+  return c.json({
+    ...payload,
+    offeredDriversCount,
+    message: "Order approved.",
+  });
+};
+
+export const rejectBusinessOrder = async (c: Context<OrderEnv>) => {
+  const params = orderIdParamSchema.safeParse(c.req.param());
+  if (!params.success) {
+    return c.json({ message: "Invalid order id." }, 400);
+  }
+  const parsed = businessRejectSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ message: "A rejection note is required." }, 400);
+  }
+
+  await promoteDueCustomerCancelOrders();
+  const now = new Date();
+  const note = parsed.data.note;
+
+  const [existing] = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.id, params.data.id),
+        eq(orders.businessId, c.var.user.id),
+      ),
+    )
+    .limit(1);
+  if (!existing) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+  if (!orderActionFlags(existing, now).canReject) {
+    return c.json(
+      { message: "This order is not waiting for business approval." },
+      409,
+    );
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(orders)
+        .set({
+          status: "cancelled",
+          cancelledBy: "business",
+          cancelledAt: now,
+          businessRespondedAt: now,
+          businessRejectionNote: note,
+        })
+        .where(
+          and(
+            eq(orders.id, existing.id),
+            eq(orders.status, "awaiting_business"),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        throw new Error("reject_race");
+      }
+      await markOrderPaymentFailed(existing.id, tx);
+      await tx.insert(notifications).values({
+        userId: existing.customerId,
+        type: "order_rejected",
+        title: "Order declined",
+        message: `Your order was declined by the restaurant. Note: ${note}`,
+      });
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === "reject_race") {
+      return c.json(
+        { message: "This order is not waiting for business approval." },
+        409,
+      );
+    }
+    throw err;
+  }
+
+  const payload = await loadOrderDetailPayload(existing.id);
+  if (!payload) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+  return c.json({
+    ...payload,
+    message: "Order rejected.",
+  });
+};
+
+export const cancelAdminOrder = async (c: Context<OrderEnv>) => {
+  const params = orderIdParamSchema.safeParse(c.req.param());
+  if (!params.success) {
+    return c.json({ message: "Invalid order id." }, 400);
+  }
+
+  await promoteDueCustomerCancelOrders();
+  const now = new Date();
+
+  const [existing] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, params.data.id))
+    .limit(1);
+  if (!existing) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+  if (!orderActionFlags(existing, now).canAdminCancel) {
+    return c.json(
+      {
+        message:
+          existing.status === "cancelled"
+            ? "Order is already cancelled."
+            : "Delivered orders cannot be cancelled.",
+      },
+      409,
+    );
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(orders)
+      .set({
+        status: "cancelled",
+        cancelledBy: "admin",
+        cancelledAt: now,
+        driverId: null,
+      })
+      .where(eq(orders.id, existing.id));
+
+    await cancelOpenDriverOffers(existing.id, now, tx);
+    await releaseDriverIfAssigned(existing.driverId, tx);
+    await markOrderPaymentFailed(existing.id, tx);
+
+    await tx.insert(notifications).values({
+      userId: existing.customerId,
+      type: "order_cancelled",
+      title: "Order cancelled",
+      message: "Your order was cancelled by FlashGo support.",
+    });
+
+    if (existing.businessId) {
+      await tx.insert(notifications).values({
+        userId: existing.businessId,
+        type: "order_cancelled",
+        title: "Order cancelled",
+        message: `Order ${existing.id.slice(0, 8)} was cancelled by support.`,
+      });
+    }
+  });
+
+  const payload = await loadOrderDetailPayload(existing.id);
+  if (!payload) {
+    return c.json({ message: "Order not found." }, 404);
+  }
+  return c.json({
+    ...payload,
+    message: "Order cancelled by admin.",
   });
 };
