@@ -405,9 +405,9 @@ export default function AdminOrdersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>When</TableHead>
+                    <TableHead className="hidden sm:table-cell">When</TableHead>
                     <TableHead>Customer</TableHead>
-                    <TableHead>Business</TableHead>
+                    <TableHead className="hidden md:table-cell">Business</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                   </TableRow>
@@ -419,13 +419,13 @@ export default function AdminOrdersPage() {
                       className="cursor-pointer"
                       onClick={() => openOrder(row.id)}
                     >
-                      <TableCell className="whitespace-nowrap text-muted-foreground text-xs">
+                      <TableCell className="hidden whitespace-nowrap text-muted-foreground text-xs sm:table-cell">
                         {format(new Date(row.createdAt), "MMM d, h:mm a")}
                       </TableCell>
                       <TableCell className="font-medium">
                         {row.customer?.fullName ?? "—"}
                       </TableCell>
-                      <TableCell>{row.business?.name ?? "—"}</TableCell>
+                      <TableCell className="hidden md:table-cell">{row.business?.name ?? "—"}</TableCell>
                       <TableCell>
                         <Badge variant={statusVariant(row.status)}>
                           {row.status.replace("_", " ")}

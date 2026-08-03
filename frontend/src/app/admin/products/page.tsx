@@ -196,7 +196,7 @@ export default function AdminProductsPage() {
             Manage reusable category names used by business product categories.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => void loadRows()} disabled={loading}>
             Refresh
           </Button>
@@ -241,7 +241,7 @@ export default function AdminProductsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="hidden md:table-cell">Created</TableHead>
-                  <TableHead className="w-[220px] text-right">Actions</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

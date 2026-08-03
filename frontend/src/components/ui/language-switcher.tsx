@@ -10,39 +10,40 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 
+export function setAppLanguage(lang: 'en' | 'am') {
+  // Google Translate uses a cookie to handle transformation
+  // Format: /pageLanguage/targetLanguage
+  const value = lang === 'en' ? '/en/en' : '/en/am';
+
+  // Clear existing cookies to avoid duplicates/mismatches
+  document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+
+  // Set the new cookie
+  document.cookie = `googtrans=${value}; path=/`;
+
+  // Refresh the page to apply the translation
+  window.location.reload();
+}
+
+export function getAppLanguage(): 'en' | 'am' {
+  const cookie = document.cookie
+    .split('; ')
+    .find((row) => row.startsWith('googtrans='));
+  if (cookie) {
+    const lang = cookie.split('/').pop();
+    if (lang === 'am') return 'am';
+  }
+  return 'en';
+}
+
 export function LanguageSwitcher() {
-  const [currentLang, setCurrentLang] = React.useState('en');
+  const [currentLang, setCurrentLang] = React.useState<'en' | 'am'>('en');
 
   React.useEffect(() => {
-    // Check if there's a stored language preference or cookie
-    const cookie = document.cookie
-      .split('; ')
-      .find((row) => row.startsWith('googtrans='));
-    
-    if (cookie) {
-      const lang = cookie.split('/').pop();
-      if (lang === 'am') {
-        setCurrentLang('am');
-      } else {
-        setCurrentLang('en');
-      }
-    }
+    setCurrentLang(getAppLanguage());
   }, []);
 
-  const changeLanguage = (lang: 'en' | 'am') => {
-    // Google Translate uses a cookie to handle transformation
-    // Format: /pageLanguage/targetLanguage
-    const value = lang === 'en' ? '/en/en' : '/en/am';
-    
-    // Clear existing cookies to avoid duplicates/mismatches
-    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    
-    // Set the new cookie
-    document.cookie = `googtrans=${value}; path=/`;
-    
-    // Refresh the page to apply the translation
-    window.location.reload();
-  };
+  const changeLanguage = setAppLanguage;
 
   return (
     <DropdownMenu>
