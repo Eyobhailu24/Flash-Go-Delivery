@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, ilike } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db.js';
@@ -274,9 +274,9 @@ export const getAllProductCategories = async (
         categoryNameCatalog.id,
       ),
     )
-    .where(eq(productCategories.businessId, scope.businessId))
+    .where(and(eq(productCategories.businessId, scope.businessId), c.req.query('q')?.trim() ? ilike(categoryNameCatalog.name, `%${c.req.query('q')!.trim().slice(0, 120).replace(/[%_\\]/g, '')}%`) : undefined))
     .orderBy(
-      asc(productCategories.sortOrder),
+      c.req.query('sort') === 'name' ? asc(categoryNameCatalog.name) : asc(productCategories.sortOrder),
       asc(productCategories.createdAt),
     )
     .limit(limit)

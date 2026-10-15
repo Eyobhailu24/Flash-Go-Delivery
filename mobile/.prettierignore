@@ -1,0 +1,11 @@
+node_modules
+dist
+.expo
+android
+ios
+package-lock.json
+src/components/maps/leaflet-bundle.ts
+audit.json
+.toolchains
+test-results
+playwright-report

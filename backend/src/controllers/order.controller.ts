@@ -598,13 +598,26 @@ export const createPackageOrder = async (c: Context<OrderEnv>) => {
   return c.json(result, 201);
 };
 
+export const estimatePackageOrder = async (c: Context<OrderEnv>) => {
+  const parsed = packageCheckoutSchema.pick({ pickup: true, dropoff: true }).safeParse(await c.req.json());
+  if (!parsed.success) return c.json({ message: 'Choose valid pickup and drop-off locations.' }, 400);
+  const distance = haversineDistanceKm(parsed.data.pickup, parsed.data.dropoff);
+  const deliveryFee = computeDeliveryFee(distance);
+  return c.json({ subtotal: '100.00', routeDistanceKm: toMoneyString(distance), deliveryFee: toMoneyString(deliveryFee), serviceCharge: toMoneyString(DEFAULT_SERVICE_CHARGE), totalAmount: toMoneyString(100 + deliveryFee + DEFAULT_SERVICE_CHARGE) });
+};
+
 export const getMyOrders = async (c: Context<OrderEnv>) => {
   await promoteDueCustomerCancelOrders();
-  const rows = await db
+  const requestedLimit = c.req.query('limit');
+  const limit = requestedLimit ? Math.min(Math.max(Number(requestedLimit) || 30, 1), 200) : undefined;
+  const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
+  const orderQuery = db
     .select()
     .from(orders)
     .where(eq(orders.customerId, c.var.user.id))
-    .orderBy(desc(orders.createdAt));
+    .orderBy(desc(orders.createdAt))
+    .$dynamic();
+  const rows = await (limit ? orderQuery.limit(limit).offset(offset) : orderQuery);
   if (rows.length === 0) {
     return c.json({ orders: [] });
   }

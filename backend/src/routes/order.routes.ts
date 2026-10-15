@@ -6,6 +6,7 @@ import {
   checkoutOrder,
   createPackageOrder,
   estimateCheckoutOrder,
+  estimatePackageOrder,
   getAdminOrderById,
   getBusinessOrderById,
   getMyOrderById,
@@ -43,6 +44,7 @@ customerAdmin.use("*", restrictTo("customer", "admin"));
 customerAdmin.post("/checkout", checkoutOrder);
 customerAdmin.post("/checkout/estimate", estimateCheckoutOrder);
 customerAdmin.post("/package", createPackageOrder);
+customerAdmin.post("/package/estimate", estimatePackageOrder);
 customerAdmin.get("/my", getMyOrders);
 customerAdmin.post("/:id/feedback", submitDriverFeedback);
 customerAdmin.post("/:id/cancel", cancelMyOrder);

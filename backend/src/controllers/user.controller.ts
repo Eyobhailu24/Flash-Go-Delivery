@@ -1,4 +1,4 @@
-import { and, desc, eq, getTableColumns } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, ilike, or } from 'drizzle-orm';
 import argon2 from 'argon2';
 import type { Context } from 'hono';
 import { z } from 'zod';
@@ -253,6 +253,8 @@ export const getAllUsers = async (c: Context) => {
   }
 
   const whereParts = [];
+  const search = c.req.query('q')?.trim().slice(0, 120).replace(/[%_\\]/g, '');
+  if (search) whereParts.push(or(ilike(users.fullName, `%${search}%`), ilike(users.email, `%${search}%`), ilike(users.phoneNumber, `%${search}%`)));
   if (roleFilter) {
     whereParts.push(eq(users.role, roleFilter));
   }

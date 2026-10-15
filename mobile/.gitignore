@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+dist/
+android/
+ios/
+.env
+.env.local
+*.tsbuildinfo
+coverage/
+*.log
+test-results/
+playwright-report/
+audit.json
+google-services.json
+GoogleService-Info.plist
+.toolchains/

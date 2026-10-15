@@ -2,7 +2,6 @@ import { and, desc, eq, gt, isNull } from 'drizzle-orm';
 import argon2 from 'argon2';
 import {
   deleteCookie,
-  getCookie,
   setCookie,
 } from 'hono/cookie';
 import type { Context } from 'hono';
@@ -10,12 +9,14 @@ import jwt from 'jsonwebtoken';
 import { createHash, randomInt } from 'node:crypto';
 import { z } from 'zod';
 import { db } from '../db.js';
+import { issueMobileSession, readAccessPayload, rotateMobileSession, revokeMobileSession } from '../lib/mobile-auth.js';
 import {
   ETHIOPIA_PHONE_E164,
   normalizePhone,
 } from '../lib/ethiopia-phone.js';
 import {
   customerProfile,
+  mobileSessions,
   otpVerifications,
   users,
 } from '../schema.js';
@@ -358,15 +359,22 @@ function setAuthCookies(
   });
 }
 
-function requireAuth(c: Context): AccessPayload | null {
-  const token = getCookie(c, 'access_token');
-  if (!token) return null;
-  try {
-    return jwt.verify(token, accessSecret) as AccessPayload;
-  } catch {
-    return null;
-  }
-}
+const requireAuth = readAccessPayload;
+
+export const refreshMobile = async (c: Context) => {
+  const body = z.object({ refreshToken: z.string().min(32).max(512) }).safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ message: 'Invalid refresh token.' }, 400);
+  const tokens = await rotateMobileSession(body.data.refreshToken);
+  if (!tokens) return c.json({ message: 'Session expired. Please sign in again.' }, 401);
+  c.header('Cache-Control', 'no-store');
+  return c.json(tokens);
+};
+
+export const logoutMobile = async (c: Context) => {
+  const body = z.object({ refreshToken: z.string().min(32).max(512) }).safeParse(await c.req.json().catch(() => null));
+  if (body.success) await revokeMobileSession(body.data.refreshToken);
+  return c.json({ message: 'Logged out successfully.' });
+};
 
 export const signup = async (c: Context) => {
   const parsed = signupSchema.safeParse(await c.req.json());
@@ -536,6 +544,12 @@ export const login = async (c: Context) => {
     );
   }
 
+  if (c.req.path.endsWith('/mobile/login')) {
+    if (user.status !== 'active') return c.json({ message: 'This account is not active.' }, 403);
+    const tokens = await issueMobileSession({ sub: user.id, role: user.role, phoneNumber: user.phoneNumber ?? '' });
+    c.header('Cache-Control', 'no-store');
+    return c.json({ ...tokens, user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role, phoneNumber: user.phoneNumber } });
+  }
   const { accessToken, refreshToken } = createTokens({
     sub: user.id,
     role: user.role,
@@ -601,7 +615,7 @@ export const resendSignupOtp = async (c: Context) => {
 };
 
 export const changePassword = async (c: Context) => {
-  const auth = requireAuth(c);
+  const auth = await requireAuth(c);
   if (!auth)
     return c.json({ message: 'Unauthorized.' }, 401);
 
@@ -642,6 +656,10 @@ export const changePassword = async (c: Context) => {
     .update(users)
     .set({ passwordHash })
     .where(eq(users.id, user.id));
+
+  // Keep the current session usable after a deliberate change; revoke other devices.
+  const sessions = await db.select({ id: mobileSessions.id }).from(mobileSessions).where(eq(mobileSessions.userId, user.id));
+  for (const session of sessions) if (session.id !== auth.sid) await db.update(mobileSessions).set({ revokedAt: new Date() }).where(eq(mobileSessions.id, session.id));
 
   return c.json({
     message: 'Password changed successfully.',
@@ -711,10 +729,11 @@ export const resetPassword = async (c: Context) => {
   const passwordHash = await argon2.hash(
     parsed.data.newPassword,
   );
-  await db
+  const changedUsers = await db
     .update(users)
     .set({ passwordHash })
-    .where(eq(users.phoneNumber, phoneNumber));
+    .where(eq(users.phoneNumber, phoneNumber)).returning({ id: users.id });
+  for (const user of changedUsers) await db.update(mobileSessions).set({ revokedAt: new Date() }).where(eq(mobileSessions.userId, user.id));
 
   return c.json({ message: 'Password reset successful.' });
 };
@@ -735,7 +754,7 @@ export const logout = async (c: Context) => {
 };
 
 export const me = async (c: Context) => {
-  const auth = requireAuth(c);
+  const auth = await requireAuth(c);
   if (!auth) {
     return c.json({ message: 'Unauthorized.' }, 401);
   }
@@ -769,7 +788,7 @@ export const me = async (c: Context) => {
 };
 
 export const updateMe = async (c: Context) => {
-  const auth = requireAuth(c);
+  const auth = await requireAuth(c);
   if (!auth) {
     return c.json({ message: 'Unauthorized.' }, 401);
   }
@@ -866,7 +885,7 @@ export const updateMe = async (c: Context) => {
 };
 
 export const getMyCustomerProfile = async (c: Context) => {
-  const auth = requireAuth(c);
+  const auth = await requireAuth(c);
   if (!auth) {
     return c.json({ message: 'Unauthorized.' }, 401);
   }
@@ -883,7 +902,7 @@ export const getMyCustomerProfile = async (c: Context) => {
 export const upsertMyCustomerProfile = async (
   c: Context,
 ) => {
-  const auth = requireAuth(c);
+  const auth = await requireAuth(c);
   if (!auth) {
     return c.json({ message: 'Unauthorized.' }, 401);
   }

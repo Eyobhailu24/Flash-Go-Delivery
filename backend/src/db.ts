@@ -11,3 +11,4 @@ if (!connectionString) {
 const client = postgres(connectionString);
 
 export const db = drizzle(client);
+export const closeDb = () => client.end();

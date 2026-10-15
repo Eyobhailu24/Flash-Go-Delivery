@@ -20,3 +20,4 @@ export * from "./models/feedback.js";
 export * from "./models/notifications.js";
 export * from "./models/promotions.js";
 export * from "./models/otpVerifications.js";
+export * from "./models/mobile.js";

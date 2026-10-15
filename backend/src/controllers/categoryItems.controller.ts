@@ -480,6 +480,11 @@ export const getAllCategoryItems = async (
   const offset = Math.max(Number(offsetRaw ?? 0) || 0, 0);
 
   const conditions = [];
+  const categoryNameId = c.req.query('categoryNameId')?.trim();
+  if (categoryNameId) {
+    if (!z.string().uuid().safeParse(categoryNameId).success) return c.json({ message: 'Invalid category name id.' }, 400);
+    conditions.push(eq(productCategories.categoryNameId, categoryNameId));
+  }
   if (categoryId) {
     conditions.push(eq(categoryItems.categoryId, categoryId));
   }
@@ -530,7 +535,7 @@ export const getAllCategoryItems = async (
 
   const rows = await (whereExpr ? baseQuery.where(whereExpr) : baseQuery)
     .orderBy(
-      asc(categoryItems.sortOrder),
+      c.req.query('sort') === 'name' ? asc(categoryItems.name) : c.req.query('sort') === 'price' ? asc(categoryItems.price) : asc(categoryItems.sortOrder),
       asc(categoryItems.createdAt),
     )
     .limit(limit)

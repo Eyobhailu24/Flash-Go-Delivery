@@ -1,19 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { getCookie } from 'hono/cookie';
 import type { MiddlewareHandler } from 'hono';
-import jwt from 'jsonwebtoken';
+import { readAccessPayload } from '../lib/mobile-auth.js';
 import { db } from '../db.js';
 import { users } from '../schema.js';
-
-const accessSecret =
-  process.env.JWT_ACCESS_SECRET ??
-  'change-me-access-secret';
-
-type AccessPayload = {
-  sub: string;
-  role: string;
-  phoneNumber: string;
-};
 
 export type AuthUser = {
   id: string;
@@ -29,15 +18,8 @@ export const protect: MiddlewareHandler<AuthEnv> = async (
   c,
   next,
 ) => {
-  const token = getCookie(c, 'access_token');
-  if (!token) {
-    return c.json({ message: 'Unauthorized.' }, 401);
-  }
-
-  let payload: AccessPayload;
-  try {
-    payload = jwt.verify(token, accessSecret) as AccessPayload;
-  } catch {
+  const payload = await readAccessPayload(c);
+  if (!payload) {
     return c.json({ message: 'Unauthorized.' }, 401);
   }
 

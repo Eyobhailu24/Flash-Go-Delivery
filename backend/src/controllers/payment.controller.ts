@@ -5,11 +5,13 @@ import { z } from "zod";
 import { db } from "../db.js";
 import type { AuthUser } from "../middleware/auth.middleware.js";
 import { orders, payments, users } from "../schema.js";
+import { isMobilePaymentReturn, signMobilePaymentReturn } from '../lib/payment-return.js';
 
 type PaymentEnv = { Variables: { user: AuthUser } };
 
 const initializeTelebirrSchema = z.object({
   orderId: z.string().uuid(),
+  client: z.enum(['web', 'mobile']).optional(),
 });
 
 const chapaInitializeResponseSchema = z.object({
@@ -127,7 +129,7 @@ export const initializeTelebirrPayment = async (c: Context<PaymentEnv>) => {
         last_name: lastName,
         phone_number: row.customer.phoneNumber ?? undefined,
         tx_ref: txRef,
-        return_url: `${backendBaseUrl.replace(/\/$/, "")}/payments/telebirr/verify?tx_ref=${txRef}`,
+        return_url: `${backendBaseUrl.replace(/\/$/, "")}/payments/telebirr/verify?tx_ref=${txRef}${parsed.data.client === 'mobile' ? `&mobile_state=${signMobilePaymentReturn(txRef)}` : ''}`,
       }),
     },
   );
@@ -165,8 +167,16 @@ export const initializeTelebirrPayment = async (c: Context<PaymentEnv>) => {
 
 export const verifyTelebirrPayment = async (c: Context) => {
   const txRef = c.req.query("tx_ref")?.trim();
+  let orderId = '';
+  const redirect = (status: 'success' | 'failed', reference: string) => {
+    if (isMobilePaymentReturn(reference, c.req.query('mobile_state'))) {
+      const scheme = process.env.MOBILE_APP_SCHEME || 'flashgo';
+      return `${scheme}://payment-status?status=${status}&tx_ref=${encodeURIComponent(reference)}&orderId=${encodeURIComponent(orderId)}`;
+    }
+    return toPaymentStatusRedirect(status, reference);
+  };
   if (!txRef) {
-    return c.redirect(toPaymentStatusRedirect("failed", "unknown"));
+    return c.redirect(redirect("failed", "unknown"));
   }
 
   const paymentRows = await db
@@ -175,8 +185,10 @@ export const verifyTelebirrPayment = async (c: Context) => {
     .where(eq(payments.transactionId, txRef))
     .limit(1);
   const payment = paymentRows[0];
+  orderId = payment?.orderId ?? '';
+  if (payment?.status === 'paid') return c.redirect(redirect('success', txRef));
   if (!payment) {
-    return c.redirect(toPaymentStatusRedirect("failed", txRef));
+    return c.redirect(redirect("failed", txRef));
   }
 
   const secretKey = process.env.CHAPA_SECRET_KEY;
@@ -185,7 +197,7 @@ export const verifyTelebirrPayment = async (c: Context) => {
       .update(payments)
       .set({ status: "failed" })
       .where(eq(payments.paymentId, payment.paymentId));
-    return c.redirect(toPaymentStatusRedirect("failed", txRef));
+    return c.redirect(redirect("failed", txRef));
   }
 
   try {
@@ -215,13 +227,13 @@ export const verifyTelebirrPayment = async (c: Context) => {
       .where(eq(payments.paymentId, payment.paymentId));
 
     return c.redirect(
-      toPaymentStatusRedirect(verified ? "success" : "failed", txRef),
+      redirect(verified ? "success" : "failed", txRef),
     );
   } catch {
     await db
       .update(payments)
       .set({ status: "failed" })
       .where(eq(payments.paymentId, payment.paymentId));
-    return c.redirect(toPaymentStatusRedirect("failed", txRef));
+    return c.redirect(redirect("failed", txRef));
   }
 };
